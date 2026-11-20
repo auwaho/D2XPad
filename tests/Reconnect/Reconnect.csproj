@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/D2XPad.Capture/RawInput.cs;../../src/D2XPad.Live/LiveState.cs;../../src/D2XPad.Live/DeviceLayout.cs;../../src/D2XPad.Live/PhysicalSession.cs" />
+    <Compile Include="../../src/D2XPad.Live/ProfileCatalog.cs;../../src/D2XPad.Live/ProfileStorage.cs;../../src/D2XPad.Live/UrXd85HfMap.cs" />
+    <EmbeddedResource Include="../../src/D2XPad.Live/85hf-bindings.json" LogicalName="D2XPad.Profiles.default.json" />
+    <None Include="../../src/D2XPad.Live/85hf-bindings.json" Link="85hf-bindings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../../src/D2XPad.Live/CalibratedLayout.cs;../../src/D2XPad.Live/LayoutStore.cs;../../src/D2XPad.Live/ControllerCalibration.cs" />
+    <Compile Include="../../src/D2XPad.Live/RumbleSurvey.cs;../../src/D2XPad.Live/PhysicalRumbleSink.cs;../../src/D2XPad.Live/ConverterReservation.cs" />
+  </ItemGroup>
+</Project>

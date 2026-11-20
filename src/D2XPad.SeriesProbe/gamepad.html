@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2XPad · Gamepad API check</title>
+<style>
+  :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; background: #161c23; color: #e8f0f7 }
+  main { max-width: 46rem; margin: 8vh auto; padding: 0 1.5rem }
+  h1 { font-size: 1.75rem } p { line-height: 1.5 }
+  pre { padding: 1rem; border: 1px solid #4e6172; border-radius: .4rem; overflow-x: auto; line-height: 1.65 }
+</style>
+<main>
+  <h1>D2XPad · Gamepad API check</h1>
+  <p>Keep this tab in the foreground. The probe presses A on the virtual controller to identify it, then runs the checks automatically.</p>
+  <p id="status" role="status">Connecting to the probe…</p>
+  <pre id="readings">Waiting for readings</pre>
+</main>
+<script>
+  const statusText = document.querySelector("#status");
+  const readings = document.querySelector("#readings");
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+  function snapshot() {
+    if (!isSecureContext || typeof navigator.getGamepads !== "function")
+      throw new Error("The Gamepad API is unavailable in this browser context.");
+    const pads = Array.from(navigator.getGamepads()).filter(p => p?.connected).map(p => ({
+      index: p.index, id: p.id, mapping: p.mapping,
+      axes: Array.from(p.axes), buttons: Array.from(p.buttons, b => b.value)
+    }));
+    return { time: performance.now(), visible: document.visibilityState === "visible",
+      focused: document.hasFocus(), userAgent: navigator.userAgent, pads };
+  }
+  const format = n => n === undefined ? "?" : n.toFixed(3);
+  function display(frame) {
+    readings.textContent = frame.pads.map(p =>
+      `[${p.index}] ${p.id} · ${p.mapping || "no standard mapping"}\n` +
+      `LT ${format(p.buttons[6])}    RT ${format(p.buttons[7])}    A ${format(p.buttons[0])}\n` +
+      `LX ${format(p.axes[0])}    LY ${format(p.axes[1])}    RX ${format(p.axes[2])}    RY ${format(p.axes[3])}`
+    ).join("\n\n") || "Waiting for the browser to detect a connected gamepad.";
+  }
+  async function run() {
+    // Touch the API before the first emulated A press so the browser can observe activation.
+    try { display(snapshot()); } catch (e) { statusText.textContent = e.message; }
+    let previous = 0;
+    for (;;) {
+      const state = `visibility=${document.visibilityState}&focus=${document.hasFocus()}`;
+      const response = await fetch("next?" + state, { cache: "no-store" });
+      if (!response.ok) throw new Error("The connection to the probe has closed.");
+      const generation = await response.json();
+      if (generation && generation !== previous) {
+        const frames = [];
+        let error = null;
+        try {
+          for (let i = 0; i < 6; i++) {
+            await delay(60);
+            const frame = snapshot();
+            if (!frame.visible) throw new Error(`The test tab is hidden. visibility=${document.visibilityState}, focus=${document.hasFocus()}`);
+            frames.push(frame);
+            display(frame);
+          }
+          statusText.textContent = `Sample set ${generation}`;
+        } catch (e) { error = e.message; statusText.textContent = error; }
+        const ack = await fetch("samples", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ generation, frames, error }) });
+        if (!ack.ok) throw new Error("The probe rejected the samples.");
+        previous = generation;
+      }
+      await delay(100);
+    }
+  }
+  run().catch(() => { statusText.textContent = "The connection to the probe has closed."; });
+</script>
+</html>

@@ -1,0 +1,91 @@
+<Window x:Class="D2XPad.Desktop.CalibrationWizard"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:D2XPad.Desktop"
+        Title="Calibrate controller" Width="812" Height="668" MinWidth="675" MinHeight="490"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource WindowBackground}" Foreground="{DynamicResource PrimaryText}"
+        FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="DesktopStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+      <Style x:Key="Entry" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/><Setter Property="Background" Value="{StaticResource FieldBackground}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource SurfaceBorder}"/><Setter Property="Padding" Value="9,7"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="CaretBrush" Value="{StaticResource PrimaryText}"/>
+      </Style>
+    </ResourceDictionary>
+  </Window.Resources>
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBackground}" BorderBrush="{StaticResource SurfaceBorder}" BorderThickness="0,0,0,1" Padding="22,14">
+      <StackPanel>
+        <TextBlock x:Name="StageText" Style="{StaticResource FieldCaption}"/>
+        <TextBlock x:Name="PageTitle" FontSize="23" FontWeight="SemiBold" Margin="0,3,0,0"/>
+      </StackPanel>
+    </Border>
+    <Border DockPanel.Dock="Bottom" Background="{StaticResource HeaderBackground}" BorderBrush="{StaticResource SurfaceBorder}" BorderThickness="0,1,0,0" Padding="18,10">
+      <StackPanel>
+        <TextBlock x:Name="Problem" Foreground="{StaticResource Error}" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Button x:Name="BackButton" Style="{StaticResource ActionButton}" Content="Back" Click="Back"/>
+          <Button x:Name="CancelButton" Grid.Column="2" Style="{StaticResource ActionButton}" Content="Cancel" IsCancel="True"/>
+          <Button x:Name="NextButton" Grid.Column="3" Style="{StaticResource ActionButton}" Margin="8,0,0,0" MinWidth="110"
+                  Background="{StaticResource Accent}" Foreground="{StaticResource StartInk}" FontWeight="SemiBold" Click="Next"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="22,18">
+      <StackPanel>
+        <StackPanel x:Name="DevicePage">
+          <TextBlock Text="Connect the controller in the mode you use for games. Each layout belongs to a specific HID collection and connection mode." TextWrapping="Wrap" Margin="0,0,0,18"/>
+          <TextBlock x:Name="CandidateLabel" Text="New HID controller" Style="{StaticResource FieldCaption}"/>
+          <Grid Margin="0,5,0,15"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="CandidatePicker" Style="{StaticResource Picker}" AutomationProperties.Name="New HID controller" SelectionChanged="CandidateChanged"/>
+            <Button Grid.Column="1" Style="{StaticResource ActionButton}" Content="Refresh" Margin="8,0,0,0" Click="RefreshDevices"/>
+          </Grid>
+          <TextBlock x:Name="CandidateHint" Foreground="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+          <TextBlock Text="Controller name" Style="{StaticResource FieldCaption}"/>
+          <TextBox x:Name="DeviceName" Style="{StaticResource Entry}" MaxLength="64" Margin="0,5,0,0" AutomationProperties.Name="Controller name"/>
+        </StackPanel>
+        <StackPanel x:Name="NeutralPage" Visibility="Collapsed">
+          <TextBlock x:Name="NeutralPrompt" FontSize="17" TextWrapping="Wrap"/>
+          <TextBlock x:Name="SignalStatus" Margin="0,12,0,0" Style="{StaticResource FieldCaption}" TextWrapping="Wrap"/>
+        </StackPanel>
+        <StackPanel x:Name="CapturePage" Visibility="Collapsed">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="205"/><ColumnDefinition Width="16"/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Physical inputs" Style="{StaticResource FieldCaption}"/>
+              <ComboBox x:Name="ControlPicker" Style="{StaticResource Picker}" Margin="0,5,0,0" SelectionChanged="ControlChanged" AutomationProperties.Name="Input to calibrate"/>
+              <TextBlock x:Name="CaptureCount" Style="{StaticResource FieldCaption}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Border Grid.Column="2" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource SurfaceBorder}"
+                    BorderThickness="1" CornerRadius="8" Padding="15">
+              <StackPanel>
+                <TextBlock x:Name="PoseTitle" FontWeight="SemiBold" FontSize="17" TextWrapping="Wrap"/>
+                <TextBlock x:Name="PosePrompt" TextWrapping="Wrap" Margin="0,6,0,10"/>
+                <WrapPanel>
+                  <Button x:Name="CaptureButton" Style="{StaticResource ActionButton}" Content="Record pose" Margin="0,0,6,4" Click="CapturePose"/>
+                  <Button x:Name="SkipButton" Style="{StaticResource ActionButton}" Content="Skip input" Margin="0,0,6,4" Click="SkipControl"/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </Grid>
+          <Border Style="{StaticResource Divider}"/>
+          <TextBlock Text="Extra buttons" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock x:Name="ExtraHelp" Text="Name a distinct physical button using 1–6 letters A–Z or digits. Its name appears in every profile for this controller." Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,8"/>
+          <WrapPanel>
+            <TextBox x:Name="ExtraName" Style="{StaticResource Entry}" Width="96" MaxLength="6" CharacterCasing="Upper"
+                     AutomationProperties.Name="Extra button name" Margin="0,0,6,4"/>
+            <Button x:Name="AddExtraButton" Style="{StaticResource ActionButton}" Content="Add button" Margin="0,0,6,4" Click="AddExtra"/>
+            <Button x:Name="RemoveExtraButton" Style="{StaticResource ActionButton}" Content="Remove selected extra" Margin="0,0,0,4" Click="RemoveExtra"/>
+          </WrapPanel>
+        </StackPanel>
+        <StackPanel x:Name="ReviewPage" Visibility="Collapsed">
+          <TextBlock x:Name="ReviewSummary" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,0,0,6" TextWrapping="Wrap"/>
+          <TextBlock x:Name="ReviewHint" Text="Move each stick, squeeze both triggers at different depths, and check the D-pad and extra buttons. Go back to add or repeat inputs before saving." TextWrapping="Wrap" Margin="0,0,0,14"/>
+          <local:InputTester x:Name="ReviewTester"/>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

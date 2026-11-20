@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D2XPad · Live controller</title>
+<style>
+  :root { color-scheme: dark; font: 16px/1.5 "Segoe UI",sans-serif; color: #eef4f8; background: #142128 }
+  * { box-sizing: border-box }
+  main { max-width: 58rem; margin: 4vh auto; padding: 0 1.2rem }
+  h1 { margin: 0; font-size: clamp(1.65rem,4vw,2.25rem) }
+  h2 { font-size: 1rem; margin: 0 0 .6rem }
+  #prompt { padding: 1rem 1.15rem; border-left: .25rem solid #89e6bb; background: #21353a; font-size: 1.15rem }
+  #pad, #status, #others { color: #b2c7d0; overflow-wrap: anywhere }
+  #pad { margin: .35rem 0 }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(12rem,1fr)); gap: .8rem }
+  section { background: #1e3038; border: 1px solid #354b55; border-radius: .6rem; padding: 1rem }
+  output { font: .95rem ui-monospace,Consolas,monospace }
+  .stick { width: 6rem; height: 6rem; margin: .6rem 0; border: 1px solid #8296a0; border-radius: 50%; position: relative;
+    background: linear-gradient(transparent 49%,#415965 50%,transparent 51%),linear-gradient(90deg,transparent 49%,#415965 50%,transparent 51%) }
+  .dot { position: absolute; width: .65rem; height: .65rem; background: #89e6bb; border-radius: 50%; transform: translate(-50%,-50%); left:50%;top:50% }
+  progress { width: 100%; accent-color: #89e6bb }
+  #digital { font: 1rem ui-monospace,Consolas,monospace; overflow-wrap: anywhere }
+</style>
+<main>
+  <h1>D2XPad · Live controller</h1>
+  <p id="pad">Waiting for the virtual controller.</p>
+  <p id="prompt" role="status">Keep this tab visible. Press and release A if the browser is waiting for input.</p>
+  <div class="grid">
+    <section><h2>Left stick</h2><div class="stick"><i class="dot" id="ldot"></i></div><output id="ls">—</output></section>
+    <section><h2>Right stick</h2><div class="stick"><i class="dot" id="rdot"></i></div><output id="rs">—</output></section>
+    <section><h2>Triggers</h2><label>LT <output id="lt">—</output><progress id="lbar" max="1" value="0"></progress></label>
+        <label>RT <output id="rt">—</output><progress id="rbar" max="1" value="0"></progress></label></section>
+    <section><h2>Pressed buttons</h2><output id="digital">—</output></section>
+  </div>
+  <p id="others"></p><p id="status"></p>
+</main>
+<script>
+  const find = id => document.getElementById(id);
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const names = ["A","B","X","Y","LB","RB","LT","RT","Back","Start","L3","R3","D-pad up","D-pad down","D-pad left","D-pad right","Guide"];
+  let selected = null;
+  let lastDisplay = 0;
+  let stopped = false;
+  function snapshot() {
+    if (!window.isSecureContext || typeof navigator.getGamepads !== "function")
+      throw new Error("The Gamepad API is unavailable in this browser context.");
+    return {time: performance.now(), visible: document.visibilityState === "visible",
+      focused: document.hasFocus(), userAgent: navigator.userAgent,
+      pads: Array.from(navigator.getGamepads()).filter(p => p && p.connected).map(p =>
+        ({index: p.index, id: p.id, mapping: p.mapping, axes: Array.from(p.axes), buttons: Array.from(p.buttons, b => b.value)}))};
+  }
+  function display(f) {
+    const pad = selected && f.pads.find(p => p.index === selected.index && p.id === selected.id && p.mapping === "standard");
+    find("pad").textContent = pad ? "Virtual controller · [" + pad.index + "] " + pad.id : "Waiting to identify the virtual Xbox controller.";
+    const others = f.pads.filter(p => p !== pad).map(p => "[" + p.index + "] " + p.id + " (" + (p.mapping || "raw mapping") + ")");
+    find("others").textContent = others.length ? "Other detected controllers · " + others.join(" / ") : "";
+    for (const [side, axis, trigger] of [["l",0,6],["r",2,7]]) {
+      const x = pad?.axes[axis], y = pad?.axes[axis+1], t = pad?.buttons[trigger];
+      find(side+"s").textContent = Number.isFinite(x) && Number.isFinite(y) ? x.toFixed(3) + " / " + y.toFixed(3) : "—";
+      const dot = find(side+"dot");
+      dot.style.left = 50 + (x || 0)*48 + "%"; dot.style.top = 50 + (y || 0)*48 + "%";
+      find(side+"t").textContent = Number.isFinite(t) ? t.toFixed(3) : "—";
+      find(side+"bar").value = t || 0;
+    }
+    const active = names.filter((name,i) => i !== 6 && i !== 7 && pad?.buttons[i] > .5);
+    find("digital").textContent = pad ? active.join(" + ") || "Released" : "—";
+  }
+  function render(time) {
+    if (stopped) return;
+    if (time-lastDisplay > 55) { display(snapshot()); lastDisplay = time; }
+    requestAnimationFrame(render);
+  }
+  async function collect(generation) {
+    const frames = [];
+    let error = null;
+    try {
+      for (let i = 0; i < 6; i++) {
+        await wait(60);
+        const f = snapshot();
+        if (!f.visible) throw new Error("The browser tab is hidden. Bring the live monitor to the foreground.");
+        frames.push(f);
+      }
+    } catch (e) { error = e.message; }
+    return JSON.stringify({generation,frames,error});
+  }
+  async function request(url, options) {
+    const response = await fetch(url, {...options, signal:AbortSignal.timeout(3000), cache:"no-store"});
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    return response;
+  }
+  async function poll() {
+    let previous = 0, failures = 0;
+    let pending = null;
+    while (!stopped) {
+      try {
+        if (pending) {
+          // A lost response can follow a successful POST. Retry the captured body
+          // verbatim; the server matches generations and ignores duplicate replies.
+          await request("samples",{method:"POST",headers:{"Content-Type":"application/json"},body:pending.body});
+          previous = pending.generation;
+          pending = null;
+        }
+        const response = await request("next?live=1&visibility="+document.visibilityState+"&focus="+document.hasFocus());
+        const state = await response.json();
+        selected = state.selectedIndex === null ? null : {index:state.selectedIndex,id:state.selectedId};
+        if (state.prompt && state.prompt !== find("prompt").textContent) find("prompt").textContent = state.prompt;
+        failures = 0;
+        find("status").textContent = "";
+        if (state.finished) {
+          stopped = true;
+          // The terminal message is already displayed even if this acknowledgement is lost.
+          await request("finished",{method:"POST"}).catch(() => {});
+          return;
+        }
+        if (state.generation && state.generation !== previous) {
+          pending = {generation:state.generation,body:await collect(state.generation)};
+        } else await wait(100);
+      } catch (e) {
+        if (++failures >= 12) {
+          stopped = true;
+          find("status").textContent = "D2XPad is unreachable. If the check is still running, reload this tab.";
+          return;
+        }
+        find("status").textContent = "Reconnecting to D2XPad…";
+        await wait(Math.min(200 * 2 ** (failures - 1), 1500));
+      }
+    }
+  }
+  try {
+    display(snapshot()); requestAnimationFrame(render);
+    poll().catch(e => {find("status").textContent = e.message || "D2XPad disconnected.";});
+  } catch (e) {find("status").textContent = e.message;}
+</script>
+</html>

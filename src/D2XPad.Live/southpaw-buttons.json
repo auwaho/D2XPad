@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "name": "southpaw-buttons",
+  "device": "85hf-bluetooth",
+  "bindings": { "L4": "RB", "R4": "LB", "PL": "B", "PR": "A" }
+}

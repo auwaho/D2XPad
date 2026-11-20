@@ -36,6 +36,21 @@ The Bluetooth 85HF layout and its presets ship with the app. Saved profiles live
 
 On Windows x64 with the .NET 10 SDK, run `.\scripts\Build-Desktop.ps1` in PowerShell from the repository root. The build verifies the bundled HIDMaestro dependency and publishes the desktop package to `artifacts/Desktop`. [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
+Release builds use the tag as the version source. Pushing a tag such as `v1.2.3` for a commit on `main` builds `D2XPad-v1.2.3-win-x64.zip` and its SHA-256 checksum. Both executables report product version `1.2.3` and file version `1.2.3.0`. Prerelease suffixes appear in the ZIP name and product version.
+
+### Controller diagnostics
+
+Run these commands from the source tree with the .NET 10 SDK.
+
+| Command | Purpose |
+| --- | --- |
+| `.\Record-Controller.cmd list-raw` | List physical USB and Bluetooth HID gamepad and joystick collections. |
+| `.\Record-Controller.cmd record-raw --device 1 --seconds 30` | Save timestamped raw reports from the selected collection with no calibration required. The capture is saved under `captures\` by default. |
+| `.\Play-Controller.cmd list` | List connected controllers with a built-in or saved layout. |
+| `.\Play-Controller.cmd play --device 1` | Start conversion with the selected controller's default profile. Pass `--profile NAME-OR-FILE` to choose a different compatible profile. |
+
+Numbers are specific to each list. Omitting `--device` selects the only matching item when the list has exactly one entry. To rebuild the console converter after source changes, run `.\scripts\Build-Live.ps1`. The 85HF guided capture (`Record-Controller.cmd record`), capture analyzer and guided live checks use the known 85HF report format and test sequence.
+
 ## Acknowledgment
 
 UR-XD provided an early reference for understanding the Bluetooth 85HF's raw reports. D2XPad's built-in layout was verified against its own input captures. [UR-XD v2.2](https://github.com/jesga06/UR-XD/releases/tag/v2.2)

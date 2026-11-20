@@ -32,6 +32,8 @@ internal static class ProfileCheck
         var header = first.RootElement;
         Require(Text(header, "type") == "session" && Int(header, "schemaVersion") == 1,
             "Expected a D2XPad capture with schema version 1.");
+        Require(!header.TryGetProperty("captureKind", out var kind) || kind.GetString() != CaptureFile.RawKind,
+            "The 85HF profile check requires a guided recording. Run record to create one.");
         var map = new Map(header.GetProperty("profile"));
         var digest = Text(header, "profileSha256");
         output.WriteLine($"Checking the 85HF against the profile saved in this capture · SHA-256 {digest}");

@@ -1,4 +1,7 @@
-param([switch]$StageOnly)
+param(
+    [switch]$StageOnly,
+    [string]$Version
+)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -8,7 +11,11 @@ $token = [guid]::NewGuid().ToString('N')
 $stage = Join-Path $artifacts "Desktop-stage-$token"
 & (Join-Path $PSScriptRoot 'Build-SeriesProbe.ps1') -SdkOnly
 
-dotnet publish (Join-Path $root 'src/D2XPad.Desktop/D2XPad.Desktop.csproj') -c Release -o $stage -m:1 -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false
+$versionProperties = @()
+if ($Version) {
+    $versionProperties = @("-p:Version=$Version", '-p:IncludeSourceRevisionInInformationalVersion=false')
+}
+dotnet publish (Join-Path $root 'src/D2XPad.Desktop/D2XPad.Desktop.csproj') -c Release -o $stage -m:1 -p:TreatWarningsAsErrors=true -p:UseSharedCompilation=false @versionProperties
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 foreach ($file in 'D2XPad.exe', 'D2XPad.Live.exe', 'HIDMaestro.Core.dll') {
     if (!(Test-Path -LiteralPath (Join-Path $stage $file) -PathType Leaf)) { throw "Published desktop is missing $file." }

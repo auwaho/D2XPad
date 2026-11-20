@@ -60,9 +60,7 @@ internal sealed class ControllerCalibration
         foreach (var c in Previous) IncludeMeasured(c);
     }
 
-    public static bool IsCandidate(HidCollection d) => d.UsagePage == 1 && d.Usage is 4 or 5 &&
-        d.Transport is "Bluetooth" or "USB" && !d.Path.Contains("HIDMAESTRO", StringComparison.OrdinalIgnoreCase) &&
-        !d.Path.Contains("VIGEM", StringComparison.OrdinalIgnoreCase);
+    public static bool IsCandidate(HidCollection device) => device.IsPhysicalGameController;
 
     private void EnsureReport(byte[] report)
     {

@@ -372,7 +372,7 @@ public partial class CalibrationWizard : Window
         SelectStep(remaining ?? step!);
         if (remaining == null) CaptureCount.Text += original?.IsBuiltIn == true
             ? ". Choose Test layout to review the changes."
-            : ". Add an extra button or choose Test layout.";
+            : ". Choose Test layout or add an optional extra button.";
     }
 
     private void AddExtra(object sender, RoutedEventArgs e)

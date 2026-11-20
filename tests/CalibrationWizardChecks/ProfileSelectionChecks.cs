@@ -12,6 +12,7 @@ internal static class ProfileSelectionChecks
         var factory = DeviceLayout.Resolve(DeviceLayout.Bluetooth85HF.Id);
         var catalog = new ProfileCatalog();
         var saved = catalog.SaveMappings(catalog.OpenEditor(other.DefaultProfileName), "Fixture custom", []);
+        CheckLiveDefaults(catalog, other, factory, saved.Name);
         var preferences = new DesktopPreferences();
         preferences.SaveProfile(saved.Name, other.Id);
         File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable("D2XPAD_PROFILE_DIR")!, "Broken.json"), "{");
@@ -60,6 +61,25 @@ internal static class ProfileSelectionChecks
         }
         finally { window.Close(); }
         Console.WriteLine("WPF profiles passed layout filtering, corrupt fallback, per-layout recall and foreign live import.");
+    }
+
+    private static void CheckLiveDefaults(ProfileCatalog catalog, DeviceLayout learned, DeviceLayout factory, string customName)
+    {
+        string legacy = Path.Combine(catalog.DirectoryPath, "85hf-bindings.json");
+        File.WriteAllText(legacy, """{ "L4": "X", "R4": "RB", "PL": "A", "PR": "B" }""");
+        try
+        {
+            var selected = D2XPad.Live.Program.SelectProfile(catalog, null, learned);
+            Check(selected.Selector == learned.DefaultProfileName && selected.Profile.Bindings.Layout.Id == learned.Id,
+                "The live CLI must default to the selected calibrated layout even with a legacy 85HF profile present.");
+            Check(D2XPad.Live.Program.SelectProfile(catalog, customName, learned).Selector == customName,
+                "The live CLI must honor an explicit profile name.");
+            Check(D2XPad.Live.Program.SelectProfile(catalog, null, factory).Selector == legacy &&
+                D2XPad.Live.Program.SelectProfile(catalog, factory.DefaultProfileName, factory).Selector == factory.DefaultProfileName,
+                "The live CLI must keep the legacy 85HF fallback and allow explicitly overriding it.");
+        }
+        finally { File.Delete(legacy); }
+        Console.WriteLine("Live CLI profiles passed calibrated defaults, explicit selection and legacy 85HF compatibility.");
     }
 
     private static object? Invoke(MainWindow window, string method, params object?[] arguments) =>

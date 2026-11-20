@@ -4,7 +4,7 @@ D2XPad runs on Windows x64 and requires the .NET 10 Desktop Runtime. Extract the
 
 ## Start conversion
 
-1. Pair the 8BitDo 85HF in Windows Bluetooth settings and wake it. On **Converter**, the **Device** card shows the physical connection.
+1. Connect your controller over USB or pair it in Windows Bluetooth settings. On **Converter**, the **Device** card shows the selected physical input. For a controller without a saved or built-in layout, complete **Controllers → Add controller** first.
 2. Choose a profile and select **Start conversion**. In the input tester, use **Physical input** to check the controls before mapping and **Xbox output** to check the virtual Xbox Series X|S. Press and release a button or move a stick to get the first physical reading.
 3. In the game, use the virtual Xbox controller. If the game sees both devices or responds twice, select the virtual controller in the game and check for another remapper acting on the physical controller.
 
@@ -23,7 +23,7 @@ A fresh install selects `default` for the Bluetooth 85HF and also includes `sout
 
 ## Edit mappings
 
-Choose **Edit mappings**, select a physical input and pick an Xbox action before selecting **Add**. Add several actions to send them together. For example, assign **RT** at 100% and **Left stick up** at 75% to one paddle. **Strength** scales analog outputs.
+Choose **Edit mappings**, select a standard input or a named extra button and pick an Xbox action before selecting **Add**. Add several actions to send them together. For example, assign **RT** at 100% and **Left stick up** at 75% to one paddle. **Strength** scales analog outputs.
 
 ![D2XPad Input mappings editor](images/input-mappings.png)
 
@@ -38,10 +38,10 @@ The built-in layout supports the 8BitDo Ultimate 3C+ Wireless in the Bluetooth m
 On a fresh install with an Ultimate 2C, **Controllers** lists the built-in **8BitDo 85HF** layout. It shows **Offline** when that controller is absent. The `default` and `southpaw-buttons` presets belong to the 85HF layout. Use **Add controller** to see whether the connected 2C is eligible for calibration. Saving a 2C layout adds a separate `<controller name> · default` profile for that layout. Vibration is currently available only on the Bluetooth 85HF.
 
 1. Connect the controller in the mode you intend to use and open **Controllers → Add controller**.
-2. Record two resting samples, then follow the prompts for the controls you want to map. Use **Add button** for an independently reported extra. Each extra needs a unique name of up to six uppercase English letters or digits.
+2. Record two resting samples, then follow the prompts for the standard controls. The wizard steps through sticks, triggers, D-pad and buttons, including Guide. You can continue straight to **Test layout** or add only the extra buttons you want to map. For each independently reported extra you want to add, enter a unique name of up to six uppercase English letters or digits, select **Add button** and follow the prompts.
 3. Select **Test layout** and check sticks, D-pad, buttons and both triggers. Select **Save layout** when the measurements look right. With conversion stopped, use **Set as input** in **Controllers** to switch to a connected saved controller.
 
-The wizard can skip a missing control. Controls split across collections or report IDs cannot be combined. An extra button that the controller firmware reports as a copy of a standard button shares that button's mapping.
+The wizard can skip a missing control. Calibrated standard controls start with their corresponding Xbox actions. Named extras start unassigned and are available in every profile for that layout. Controls split across collections or report IDs cannot be combined. An extra button that the controller firmware reports as a copy of a standard button shares that button's mapping.
 
 With conversion stopped, use **Recalibrate** to update a saved layout. **Forget controller** archives a learned layout and retains its profiles for **Restore controller**.
 

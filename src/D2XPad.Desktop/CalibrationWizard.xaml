@@ -72,7 +72,7 @@
           </Grid>
           <Border Style="{StaticResource Divider}"/>
           <TextBlock Text="Extra buttons" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock x:Name="ExtraHelp" Text="Name a distinct physical button using 1–6 letters A–Z or digits. Its name appears in every profile for this controller." Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,8"/>
+          <TextBlock x:Name="ExtraHelp" Text="Add only the extra buttons you want to map. Use 1–6 letters A–Z or digits for each name." Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,8"/>
           <WrapPanel>
             <TextBox x:Name="ExtraName" Style="{StaticResource Entry}" Width="96" MaxLength="6" CharacterCasing="Upper"
                      AutomationProperties.Name="Extra button name" Margin="0,0,6,4"/>

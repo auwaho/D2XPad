@@ -34,6 +34,9 @@ internal static class Program
                     D2XPad.Live check-sleep
                     D2XPad.Live rumble-probe survey | virtual | physical
                     D2XPad.Live list | stop
+
+                    Run list to see connected controllers with a calibration. With no profile specified,
+                    play uses the selected controller's default. The guided check and replay require the 85HF layout.
                     """);
                 return 0;
             }
@@ -165,16 +168,18 @@ internal static class Program
             VerificationLog? log = null;
             try
             {
-                var selection = SelectProfile(catalog, profileSelector);
+                var physical = capture == null ? PhysicalFeed.Select(device, devicePath) : null;
+                var layout = physical == null ? DeviceLayout.Bluetooth85HF : PhysicalSession.LayoutFor(physical)
+                    ?? throw new InvalidDataException("The selected HID collection has no supported layout.");
+                if (command == "check" && layout.Id != DeviceLayout.Bluetooth85HF.Id)
+                    throw new InvalidDataException("The guided hardware check requires the Bluetooth 85HF layout.");
+                var selection = SelectProfile(catalog, profileSelector, layout);
                 var map = selection.Profile.Bindings;
                 if (capture != null && !map.UsesReplayDefaults)
                     throw new InvalidDataException("The recorded capture expects the built-in 85HF calibration and L4=LB, R4=RB, PL=A and PR=B. " +
                         "Run the live check to test your current calibration and bindings.");
-                var physical = capture == null ? PhysicalFeed.Select(device, devicePath) : null;
-                if (physical != null && PhysicalSession.LayoutFor(physical)?.Id != map.Layout.Id)
+                if (layout.Id != map.Layout.Id)
                     throw new InvalidDataException($"The selected profile is for {map.Layout.DisplayName}. Choose a profile for the connected controller.");
-                if (command == "check" && map.Layout.Id != DeviceLayout.Bluetooth85HF.Id)
-                    throw new InvalidDataException("The guided hardware check requires the Bluetooth 85HF layout.");
                 bool rumble = (command == "play" || keepPlaying) && physical != null && RumbleSurvey.Supports(physical);
                 if (vibration && !rumble)
                     throw new InvalidOperationException("Game vibration is unavailable for this controller and connection.");
@@ -241,9 +246,10 @@ internal static class Program
         catch (Exception ex) { Console.Error.WriteLine("D2XPad: " + ex.Message); return 2; }
     }
 
-    private static ProfileSelection SelectProfile(ProfileCatalog catalog, string? selector)
+    internal static ProfileSelection SelectProfile(ProfileCatalog catalog, string? selector, DeviceLayout layout)
     {
         if (selector != null) return ProfileSelection.Load(catalog, selector);
+        if (layout.Id != DeviceLayout.Bluetooth85HF.Id) return ProfileSelection.Load(catalog, layout.DefaultProfileName);
         var legacy = Path.Combine(catalog.DirectoryPath, "85hf-bindings.json");
         if (!File.Exists(legacy))
             legacy = Path.Combine(AppContext.BaseDirectory, "85hf-bindings.json"); // Read an older unpacked install before it is upgraded.
@@ -252,7 +258,7 @@ internal static class Program
             var customized = ProfileSelection.Load(catalog, legacy);
             if (!customized.Profile.Bindings.UsesDefault85HfAssignments) return customized;
         }
-        return ProfileSelection.Load(catalog, "default");
+        return ProfileSelection.Load(catalog, layout.DefaultProfileName);
     }
 
     internal static async Task PlayAsync(PhysicalFeed feed, LiveOutput output, int slot, ProfileCatalog catalog,

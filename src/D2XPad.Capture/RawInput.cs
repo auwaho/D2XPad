@@ -8,7 +8,12 @@ namespace D2XPad.Capture;
 internal sealed record HidCollection(nint Handle, string Path, ushort VendorId, ushort ProductId,
     ushort UsagePage, ushort Usage, string Transport, string? ContainerId, int? InputReportLength = null,
     IReadOnlyList<byte>? InputReportIds = null, IReadOnlyList<HidValueField>? InputValues = null, string? ButtonSignature = null,
-    IReadOnlyList<HidButtonBits>? InputButtons = null);
+    IReadOnlyList<HidButtonBits>? InputButtons = null)
+{
+    public bool IsPhysicalGameController => UsagePage == 1 && Usage is 4 or 5 &&
+        Transport is "Bluetooth" or "USB" && !Path.Contains("HIDMAESTRO", StringComparison.OrdinalIgnoreCase) &&
+        !Path.Contains("VIGEM", StringComparison.OrdinalIgnoreCase);
+}
 
 internal sealed record HidValueField(byte ReportId, ushort Page, ushort Usage, int Offset, int Width,
     int Minimum, int Maximum);
@@ -59,10 +64,12 @@ internal sealed class RawInput : IDisposable
     private bool SelectedUsage(uint vid, uint pid, ushort page, ushort usage) =>
         selectedUsages.Contains((vid, pid, page, usage));
 
-    internal static IReadOnlyList<HidCollection> Enumerate(Func<uint, uint, ushort, ushort, bool>? eligible = null)
+    internal static IEnumerable<HidCollection> EnumeratePhysicalGameControllers() =>
+        Enumerate(static (_, _, page, usage) => page == 1 && usage is 4 or 5)
+            .Where(static device => device.IsPhysicalGameController);
+
+    internal static IReadOnlyList<HidCollection> Enumerate(Func<uint, uint, ushort, ushort, bool> eligible)
     {
-        // The standalone capture tool defaults to all safe collections of the 85HF.
-        eligible ??= static (vid, pid, _, _) => vid == 0x2dc8 && pid == 0x2067;
         var result = new List<HidCollection>();
         foreach (var entry in DeviceEntries())
         {

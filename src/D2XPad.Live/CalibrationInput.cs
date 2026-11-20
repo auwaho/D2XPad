@@ -20,10 +20,10 @@ internal sealed class CalibrationInput : ICalibrationInput
     public static HidCollection[] Devices(string? layoutId = null)
     {
         var entries = LayoutStore.Library();
-        return RawInput.Enumerate((_, _, page, usage) => page == 1 && usage is 4 or 5)
-            .Where(d => ControllerCalibration.IsCandidate(d) && (layoutId == null
+        return RawInput.EnumeratePhysicalGameControllers()
+            .Where(d => layoutId == null
                 ? !PhysicalSession.Supports(d) && !entries.Any(e => e.IsArchived && PhysicalSession.MatchesDevice(e.Layout, d))
-                : entries.Any(e => e.Layout.Id == layoutId && !e.IsArchived && PhysicalSession.MatchesDevice(e.Layout, d))))
+                : entries.Any(e => e.Layout.Id == layoutId && !e.IsArchived && PhysicalSession.MatchesDevice(e.Layout, d)))
             .OrderBy(d => d.Path, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

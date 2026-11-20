@@ -18,7 +18,10 @@ if ((Test-Path -LiteralPath $archive) -or (Test-Path -LiteralPath $checksum)) {
 $license = Join-Path $root 'LICENSE'
 if (!(Test-Path -LiteralPath $license -PathType Leaf)) { throw 'The project LICENSE is required for packaging.' }
 
-$build = @(& (Join-Path $PSScriptRoot 'Build-Desktop.ps1') -StageOnly)
+$appVersion = $Version.Substring(1)
+$numericVersion = [version]($appVersion.Split('-')[0])
+$fileVersion = "$numericVersion.0"
+$build = @(& (Join-Path $PSScriptRoot 'Build-Desktop.ps1') -StageOnly -Version $appVersion)
 $build | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'Portable desktop publish failed.' }
 $stage = Split-Path ($build | Select-Object -Last 1) -Parent
@@ -26,6 +29,13 @@ foreach ($file in 'D2XPad.exe', 'D2XPad.dll', 'D2XPad.deps.json', 'D2XPad.runtim
     'D2XPad.Live.exe', 'D2XPad.Live.dll', 'D2XPad.Live.deps.json', 'D2XPad.Live.runtimeconfig.json',
     'HIDMaestro.Core.dll', 'HIDMaestro/LICENSE', 'HIDMaestro/THIRD-PARTY-NOTICES.txt') {
     if (!(Test-Path -LiteralPath (Join-Path $stage $file) -PathType Leaf)) { throw "Package is missing $file." }
+}
+
+foreach ($file in 'D2XPad.exe', 'D2XPad.Live.exe') {
+    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $stage $file))
+    if ($info.ProductVersion -cne $appVersion -or $info.FileVersion -ne $fileVersion) {
+        throw "$file reports product version '$($info.ProductVersion)' and file version '$($info.FileVersion)'. Expected '$appVersion' and '$fileVersion' for $Version."
+    }
 }
 
 Copy-Item -LiteralPath $license -Destination (Join-Path $stage 'LICENSE')

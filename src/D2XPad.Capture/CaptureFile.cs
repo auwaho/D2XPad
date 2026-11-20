@@ -7,6 +7,7 @@ namespace D2XPad.Capture;
 
 internal sealed class CaptureFile : IDisposable
 {
+    public const string RawKind = "raw-hid";
     private readonly StreamWriter writer;
     private readonly Dictionary<nint, string> ids = [];
     private readonly long origin = Stopwatch.GetTimestamp();
@@ -15,7 +16,7 @@ internal sealed class CaptureFile : IDisposable
     private long reports;
     public long ReportCount { get { lock (gate) return reports; } }
 
-    public CaptureFile(string path, IReadOnlyList<HidCollection> sources, JsonElement profile, string profileHash)
+    public CaptureFile(string path, IReadOnlyList<HidCollection> sources, (JsonElement Map, string Hash)? profile = null)
     {
         var collections = sources.Select((source, index) =>
         {
@@ -36,9 +37,22 @@ internal sealed class CaptureFile : IDisposable
             new UTF8Encoding(false), 16384);
         try
         {
-            Write(new { type = "session", schemaVersion = 1, startedUtc = DateTimeOffset.UtcNow,
-                os = Environment.OSVersion.VersionString, tickFrequency = Stopwatch.Frequency,
-                profileSha256 = profileHash, profile, collections });
+            var header = new Dictionary<string, object?>
+            {
+                ["type"] = "session",
+                ["schemaVersion"] = 1,
+                ["startedUtc"] = DateTimeOffset.UtcNow,
+                ["os"] = Environment.OSVersion.VersionString,
+                ["tickFrequency"] = Stopwatch.Frequency,
+                ["collections"] = collections
+            };
+            if (profile is { } guided)
+            {
+                header.Add("profileSha256", guided.Hash);
+                header.Add("profile", guided.Map);
+            }
+            else header.Add("captureKind", RawKind);
+            Write(header);
             writer.Flush();
         }
         catch

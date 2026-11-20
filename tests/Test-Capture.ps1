@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (!$ExePath) { $ExePath = Join-Path $PSScriptRoot '../artifacts/85HF/D2XPad.Capture.exe' }
+if (!$ExePath) { $ExePath = Join-Path $PSScriptRoot '../artifacts/test-bin/D2XPad.Capture/D2XPad.Capture.exe' }
 $ExePath = (Resolve-Path -LiteralPath $ExePath).Path
 $profileData = Get-Content -LiteralPath $ProfilePath -Raw -Encoding UTF8 | ConvertFrom-Json
 $profileHash = (Get-FileHash -LiteralPath $ProfilePath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -108,5 +108,15 @@ try {
         if ($exitCode -ne $expected -or !$passed) { throw "$scenario failed (exit $exitCode, expected $expected):`n$result" }
         Write-Output "$scenario OK (exit $exitCode)"
     }
+
+    Set-Content -LiteralPath $fixture -Encoding Ascii -Value '{"type":"session","schemaVersion":1,"captureKind":"raw-hid"}'
+    $result = & {
+        $ErrorActionPreference = 'Continue'
+        & $ExePath analyze $fixture 2>&1
+    }
+    if ($LASTEXITCODE -ne 2 -or ($result -join "`n") -notmatch 'requires a guided recording') {
+        throw "The 85HF analyzer should reject generic raw recordings: $result"
+    }
+    Write-Output 'Raw recording rejected by the 85HF analyzer.'
 }
 finally { Remove-Item -LiteralPath $fixture }

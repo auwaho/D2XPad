@@ -80,6 +80,11 @@ internal static class Program
                 Pose(x: 0); Pose(x: 255); Pose(x: 0); Pose(x: 255);
                 window.ControlPicker.SelectedItem = window.ControlPicker.Items.Cast<CalibrationStep>().Single(s => s.Source == "LT");
                 Pose(lt: 106); Pose(lt: 255); Pose(lt: 117); Pose(lt: 255);
+                Expect(!window.ControlPicker.Items.Cast<CalibrationStep>().Any(s => s.Kind == CaptureKind.Extra),
+                    "A new calibration must start without extra buttons.");
+                Click(window.NextButton);
+                Expect(window.ReviewPage.Visibility == Visibility.Visible, "A layout without extra buttons must pass review.");
+                Click(window.BackButton);
                 window.ExtraName.Text = "A";
                 Click(window.AddExtraButton);
                 Expect(window.Problem.Visibility == Visibility.Visible, "Reserved extra name was accepted.");
@@ -103,7 +108,9 @@ internal static class Program
         var layout = PhysicalSession.LayoutFor(collection);
         Expect(layout?.DisplayName == "Fixture controller", "A fresh lookup must identify the saved device.");
         var match = new ProfileCatalog().OpenEditor(layout!.DefaultProfileName);
-        Expect(!match.CanReplace && match.Profile.Bindings.Sources.Any(s => s.Name == "P1"), "The saved layout needs a protected default profile.");
+        Expect(!match.CanReplace && match.Profile.Bindings.Sources.Any(s => s.Name == "P1") &&
+            layout.ExtraSources.Select(s => s.Name).SequenceEqual(["P1"]),
+            "The saved layout needs a protected default profile and only the extra added by the user.");
         Expect(match.Profile.Bindings.TryDecode([7, 0, 125, 1, 255], out var state, out var extras) &&
             state.Lx == 0 && state.Lt == 125 && extras != 0, "Reloaded controls must preserve the recorded values.");
         Console.WriteLine("WPF wizard passed resting telemetry, release gating, repeated controls, review, save and runtime reload.");

@@ -37,8 +37,8 @@ internal static class RumbleSurvey
         d.Transport == "Bluetooth" && d.UsagePage == 1 && d.Usage == 5 &&
         d.InputReportLength == 32 && d.InputReportIds?.Contains((byte)1) == true;
 
-    private static HidCollection[] BluetoothPads() => RawInput.Enumerate().Where(d =>
-        d.VendorId == 0x2dc8 && d.ProductId == 0x2067 && d.Transport == "Bluetooth" && d.UsagePage == 1 && d.Usage == 5).ToArray();
+    private static HidCollection[] BluetoothPads() => RawInput.Enumerate(static (vid, pid, page, usage) =>
+        vid == 0x2dc8 && pid == 0x2067 && page == 1 && usage == 5).Where(d => d.Transport == "Bluetooth").ToArray();
 
     public static async Task<int> PulseAsync(CancellationToken token, string? selectedPath = null)
     {

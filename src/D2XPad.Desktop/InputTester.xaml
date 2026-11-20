@@ -82,10 +82,10 @@
                     CornerRadius="7" Padding="2" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" KeyboardNavigation.TabNavigation="Once"
                             KeyboardNavigation.DirectionalNavigation="Cycle">
-                    <RadioButton x:Name="PhysicalSwitch" Content="Physical input" GroupName="TesterSource"
+                    <RadioButton x:Name="PhysicalSwitch" Content="Physical input"
                                  IsChecked="True" Style="{StaticResource SourceSwitch}" Checked="SourceChanged"
                                  AutomationProperties.Name="Physical controller input"/>
-                    <RadioButton x:Name="OutputSwitch" Content="Xbox output" GroupName="TesterSource"
+                    <RadioButton x:Name="OutputSwitch" Content="Xbox output"
                                  Style="{StaticResource SourceSwitch}" Checked="SourceChanged"
                                  AutomationProperties.Name="Virtual Xbox XInput output"/>
                 </StackPanel>

@@ -27,6 +27,8 @@ internal static class DesktopReliabilityChecks
         Console.WriteLine("Passed desktop session display with locked settings, removed layout and unexpected converter exit.");
         TesterWhileReconnecting();
         Console.WriteLine("Passed connection and release guidance, independent physical and Xbox readings, and quiet extras.");
+        TesterSourceAfterReconnect();
+        Console.WriteLine("Passed tester source selection across calibration and reconnect with conversion stopped.");
         ConverterGeometry(DeviceLayout.Bluetooth85HF, hasExtras: true);
         ConverterGeometry(SaveSingleStickLayout(0xBE04, "Layout with no extras"), hasExtras: false);
         Console.WriteLine("Passed converter card alignment and anchored action at both viewport sizes with and without extras.");
@@ -185,6 +187,43 @@ internal static class DesktopReliabilityChecks
                 "Sleep must take priority over the disconnect and release guidance.");
             Render(null);
             Expect(window.ActivityText.Text == "Stopped", "An ended session must show that conversion is stopped.");
+        }
+        finally { window.Close(); }
+    }
+
+    private static void TesterSourceAfterReconnect()
+    {
+        var window = new MainWindow();
+        try
+        {
+            UpdateSession(window, null);
+            var layout = DeviceLayout.Bluetooth85HF;
+            var device = new DeviceChoice("tester-fixture", layout.ShortName, layout.Id, layout);
+            var tester = window.Tester;
+            foreach (bool xbox in new[] { false, true })
+            {
+                if (xbox) tester.ShowXboxOutput();
+                window.ControllersTab.IsSelected = true;
+                var wizard = new CalibrationWizard(() => [], _ => throw new InvalidOperationException("No calibration device."));
+                try
+                {
+                    Expect(wizard.ReviewTester.PhysicalSwitch.IsChecked == true &&
+                        wizard.ReviewTester.OutputSwitch.IsChecked == false, "Calibration must review physical input.");
+                }
+                finally { wizard.Close(); }
+                window.ConverterTab.IsSelected = true;
+
+                foreach (bool connected in new[] { true, false, true })
+                {
+                    SetDevices(window, connected ? [device] : []);
+                    Draw(window);
+                    Expect(tester.PhysicalSwitch.IsChecked == !xbox && tester.OutputSwitch.IsChecked == xbox,
+                        "The Converter tester must retain its source through calibration and reconnect.");
+                    string status = xbox ? "Start conversion to test the virtual Xbox controller."
+                        : connected ? "Move a stick or press and release a button." : $"Waiting for the {layout.ShortName}.";
+                    Expect(tester.SourceStatus.Text == status, "The tester must describe the selected source without a new reading.");
+                }
+            }
         }
         finally { window.Close(); }
     }

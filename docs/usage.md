@@ -10,6 +10,8 @@ D2XPad runs on Windows x64 and requires the .NET 10 Desktop Runtime. Extract the
 
 You can switch compatible profiles while conversion is running. Release held controls after the switch. If the controller disconnects, leave conversion running and reconnect the same device. Release the controls to resume input on the existing virtual controller.
 
+The input tester keeps its selected source when you switch tabs, open calibration or reconnect the controller.
+
 Closing the window keeps conversion running in the system tray. Click the **D2X** tray icon to reopen it. **Stop conversion** releases the virtual controller, and **Exit D2XPad** in the tray menu closes the app. **Settings** includes **Start minimized in the tray** and **Remember last profile**.
 
 ## Built-in 85HF profiles

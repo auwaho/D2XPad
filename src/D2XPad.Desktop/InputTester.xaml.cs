@@ -2,13 +2,17 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Media;
 using D2XPad.Live;
+using Path = System.Windows.Shapes.Path;
 
 namespace D2XPad.Desktop;
 
 public partial class InputTester : UserControl
 {
+    private static readonly Geometry DPadArrow = Geometry.Parse("M 2.75,5.5 L 6,2.25 9.25,5.5 M 6,2.25 V 9.75");
     private readonly Brush physicalAccent, outputAccent, keyFill, keyStroke, keyText, keyInk, unavailable;
 
     private readonly List<(string Id, ulong Mask, Border Key)> buttons = [];
@@ -35,8 +39,8 @@ public partial class InputTester : UserControl
             ("A", "A", "A", 0x1000), ("B", "B", "B", 0x2000), ("X", "X", "X", 0x4000), ("Y", "Y", "Y", 0x8000),
             ("LB", "LB", "Left bumper", 0x0100), ("RB", "RB", "Right bumper", 0x0200),
             ("L3", "L3", "Left stick click", 0x0040), ("R3", "R3", "Right stick click", 0x0080),
-            ("DPadUp", "↑", "D-pad up", 1), ("DPadDown", "↓", "D-pad down", 2),
-            ("DPadLeft", "←", "D-pad left", 4), ("DPadRight", "→", "D-pad right", 8),
+            ("DPadUp", "", "D-pad up", 1), ("DPadDown", "", "D-pad down", 2),
+            ("DPadLeft", "", "D-pad left", 4), ("DPadRight", "", "D-pad right", 8),
             ("Back", "View", "View / Select", 0x0020), ("Start", "Menu", "Menu / Start", 0x0010), ("Guide", "Guide", "Guide / Home", 0x0400)
         ]);
         ready = true;
@@ -144,6 +148,25 @@ public partial class InputTester : UserControl
                 Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             };
+            int? angle = id switch
+            {
+                "DPadUp" => 0,
+                "DPadRight" => 90,
+                "DPadDown" => 180,
+                "DPadLeft" => 270,
+                _ => null
+            };
+            if (angle is int rotation)
+            {
+                var arrow = new Path
+                {
+                    Data = DPadArrow, Width = 12, Height = 12, StrokeThickness = 1.4,
+                    StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round,
+                    RenderTransform = new RotateTransform(rotation), RenderTransformOrigin = new Point(0.5, 0.5)
+                };
+                arrow.SetBinding(Path.StrokeProperty, new Binding(nameof(TextBlock.Foreground)) { Source = caption });
+                caption.Inlines.Add(new InlineUIContainer(arrow) { BaselineAlignment = BaselineAlignment.Center });
+            }
             var key = new Border
             {
                 BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(5),

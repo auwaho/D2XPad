@@ -12,7 +12,11 @@ You can switch compatible profiles while conversion is running. Release held con
 
 The input tester keeps its selected source when you switch tabs, open calibration or reconnect the controller.
 
-Closing the window keeps conversion running in the system tray. Click the **D2X** tray icon to reopen it. **Stop conversion** releases the virtual controller, and **Exit D2XPad** in the tray menu closes the app. **Settings** includes **Start minimized in the tray** and **Remember last profile**.
+Closing the window keeps conversion running in the system tray. Click the **D2X** tray icon to reopen it. **Stop conversion** releases the virtual controller, and **Exit D2XPad** in the tray menu closes the app.
+
+In **Settings → App**, **Start with Windows** launches D2XPad when you sign in. **Start minimized in the tray** keeps the main window hidden on startup. Both options are off by default. Start conversion from the **Converter** tab. D2XPad remembers the last selected profile for each controller layout.
+
+If you move the portable app, turn on **Start with Windows** again from the new location to update the startup path.
 
 ## Built-in 85HF profiles
 

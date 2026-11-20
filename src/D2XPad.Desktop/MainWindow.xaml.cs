@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         timer.Tick += Refresh;
         chosenProfile = preferences.ReadProfile(preferences.LayoutId);
         StartMinimized.IsChecked = preferences.StartMinimized;
-        RememberProfile.IsChecked = preferences.RememberProfile;
+        StartWithWindows.Loaded += (_, _) => LoadWindowsStartup();
         Loaded += (_, _) =>
         {
             initialized = true;
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
             names.Add(preferred);
         string? Find(string? name) => names.FirstOrDefault(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         string? selected = Find(preferred) ?? Find(active) ?? Find(target == null ? null : preferences.ReadProfile(target.Id))
-            ?? (preferred == null && preferences.RememberProfile && target?.Id == DeviceLayout.Bluetooth85HF.Id ? Find("85HF") : null)
+            ?? (preferred == null && target?.Id == DeviceLayout.Bluetooth85HF.Id ? Find("85HF") : null)
             ?? Find(target?.DefaultProfileName) ?? names.FirstOrDefault();
         var choices = names.Select(n => new ProfileChoice(n, target != null && target.Id != DeviceLayout.Bluetooth85HF.Id &&
             n == target.DefaultProfileName ? $"{target.DisplayName} · default" : n)).ToArray();

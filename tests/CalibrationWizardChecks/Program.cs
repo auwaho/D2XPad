@@ -164,18 +164,17 @@ internal static class Program
 
     private static void CheckPreferences(string path)
     {
-        File.WriteAllText(path, """{"Profile":"legacy"}""");
+        File.WriteAllText(path, """{"Profile":"legacy","RememberProfile":false}""");
         var preferences = new DesktopPreferences();
-        Expect(preferences.ReadProfile() == "legacy" && preferences.RememberProfile && !preferences.StartMinimized,
-            "Legacy desktop settings must keep their previous defaults.");
+        Expect(preferences.ReadProfile() == "legacy" && !preferences.StartMinimized,
+            "Legacy settings must retain the saved profile even if recall was previously disabled.");
         preferences.SaveDevice("known-path", "first");
         preferences.SaveProfile("profile-a", "first");
         preferences.SaveProfile("profile-b", "second");
-        preferences.SaveOptions(startMinimized: true, rememberProfile: false);
+        preferences.SaveStartMinimized(true);
         var reopened = new DesktopPreferences();
-        Expect(reopened.StartMinimized && reopened.ReadProfile("first") == null && reopened.DevicePath == "known-path",
-            "Reopened settings must retain launch behavior and ignore remembered profiles when disabled.");
-        reopened.SaveOptions(startMinimized: true, rememberProfile: true);
+        Expect(reopened.StartMinimized && reopened.DevicePath == "known-path",
+            "Reopened settings must retain launch behavior and device selection.");
         Expect(reopened.ReadProfile("first") == "profile-a" && reopened.ReadProfile("second") == "profile-b",
             "Remembered profiles must be selected per layout.");
     }

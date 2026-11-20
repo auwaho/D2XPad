@@ -231,8 +231,8 @@
                 <Border Style="{StaticResource Card}">
                   <StackPanel>
                     <TextBlock Text="App" Style="{StaticResource CardTitle}" Margin="0,0,0,7"/>
-                    <CheckBox x:Name="StartMinimized" Content="Start minimized in the tray" Checked="PreferenceChanged" Unchecked="PreferenceChanged" Style="{StaticResource PreferenceCheck}"/>
-                    <CheckBox x:Name="RememberProfile" Content="Remember last profile" Checked="PreferenceChanged" Unchecked="PreferenceChanged" Style="{StaticResource PreferenceCheck}"/>
+                    <CheckBox x:Name="StartWithWindows" Content="Start with Windows" Checked="WindowsStartupChanged" Unchecked="WindowsStartupChanged" Style="{StaticResource PreferenceCheck}"/>
+                    <CheckBox x:Name="StartMinimized" Content="Start minimized in the tray" Checked="StartMinimizedChanged" Unchecked="StartMinimizedChanged" Style="{StaticResource PreferenceCheck}"/>
                   </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}" Grid.Column="2">

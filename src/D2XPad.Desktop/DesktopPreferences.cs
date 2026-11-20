@@ -5,7 +5,7 @@ namespace D2XPad.Desktop;
 
 internal sealed class DesktopPreferences
 {
-    private sealed record Settings(string? Profile = null, bool StartMinimized = false, bool RememberProfile = true,
+    private sealed record Settings(string? Profile = null, bool StartMinimized = false,
         string? DevicePath = null, string? LayoutId = null, Dictionary<string, string>? ProfilesByLayout = null,
         Dictionary<string, bool>? VibrationByLayout = null);
 
@@ -14,7 +14,6 @@ internal sealed class DesktopPreferences
     private Settings? loaded;
     private Settings Current => loaded ??= Load();
     public bool StartMinimized => Current.StartMinimized;
-    public bool RememberProfile => Current.RememberProfile;
     public string? DevicePath => Current.DevicePath;
     public string? LayoutId => Current.LayoutId;
 
@@ -34,7 +33,6 @@ internal sealed class DesktopPreferences
     public string? ReadProfile(string? layoutId = null)
     {
         var preferences = Current;
-        if (!preferences.RememberProfile) return null;
         if (layoutId == null) return preferences.Profile;
         if (preferences.ProfilesByLayout is { Count: > 0 } profiles)
             return profiles.GetValueOrDefault(layoutId);
@@ -58,7 +56,6 @@ internal sealed class DesktopPreferences
     public void SaveProfile(string profile, string? layoutId = null)
     {
         var preferences = Current;
-        if (!preferences.RememberProfile) return;
         if (preferences.Profile == profile && (layoutId == null ||
             preferences.ProfilesByLayout?.GetValueOrDefault(layoutId) == profile)) return;
         var profiles = new Dictionary<string, string>(preferences.ProfilesByLayout ?? [], StringComparer.OrdinalIgnoreCase);
@@ -73,11 +70,11 @@ internal sealed class DesktopPreferences
         Save(preferences with { DevicePath = devicePath, LayoutId = layoutId });
     }
 
-    public void SaveOptions(bool startMinimized, bool rememberProfile)
+    public void SaveStartMinimized(bool startMinimized)
     {
         var preferences = Current;
-        if (preferences.StartMinimized == startMinimized && preferences.RememberProfile == rememberProfile) return;
-        Save(preferences with { StartMinimized = startMinimized, RememberProfile = rememberProfile });
+        if (preferences.StartMinimized == startMinimized) return;
+        Save(preferences with { StartMinimized = startMinimized });
     }
 
     private void Save(Settings value)

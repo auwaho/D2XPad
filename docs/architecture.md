@@ -32,6 +32,8 @@ The HIDMaestro host forwards supported left and right motor effects through a se
 
 The Bluetooth 85HF layout and its presets ship with the app. Saved profiles live in `profiles\` beside the executable. Layouts and desktop preferences live under `%LOCALAPPDATA%\D2XPad\`. Separating these records keeps physical report offsets and calibration tied to the controller and lets several profiles share one layout. [Usage and backup locations](usage.md#back-up-profiles-and-layouts)
 
+**Start with Windows** registers the current portable executable in the Windows startup list for the signed-in user. The last profile selection is saved in the desktop preferences per controller layout.
+
 ## Build from source
 
 On Windows x64 with the .NET 10 SDK, run `.\scripts\Build-Desktop.ps1` in PowerShell from the repository root. The build verifies the bundled HIDMaestro dependency and publishes the desktop package to `artifacts/Desktop`. [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)

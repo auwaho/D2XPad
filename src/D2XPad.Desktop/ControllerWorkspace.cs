@@ -14,7 +14,7 @@ public partial class MainWindow
     private IReadOnlyList<ControllerEntry> controllerLibrary = [];
     private ControllerRow[] controllerRows = [];
     private DeviceChoice[] controllerInstances = [];
-    private bool updatingControllers;
+    private bool updatingControllers, syncingWindowsStartup;
     private ControllerEntry? SelectedController => (ControllerList.SelectedItem as ControllerRow)?.Entry;
     private DeviceChoice? SelectedInstance => ControllerInstancePicker.SelectedItem as DeviceChoice;
     private bool LibraryEditable => statusKnown && frame == null && !busy && !exiting && !calibrating;
@@ -225,18 +225,40 @@ public partial class MainWindow
             savedMessageUntil = Environment.TickCount64 + 5000;
         });
 
-    private void PreferenceChanged(object sender, RoutedEventArgs e)
+    private void LoadWindowsStartup()
     {
-        if (!initialized || exiting) return;
+        syncingWindowsStartup = true;
         try
         {
-            preferences.SaveOptions(StartMinimized.IsChecked == true, RememberProfile.IsChecked == true);
-            if (preferences.RememberProfile && chosenProfile != null) preferences.SaveProfile(chosenProfile, layout.Id);
+            StartWithWindows.IsChecked = WindowsStartup.IsEnabled;
+            StartWithWindows.IsEnabled = true;
         }
         catch (Exception ex)
         {
+            StartWithWindows.IsEnabled = false;
+            ShowError($"Could not read the Windows startup setting. {ex.Message}");
+        }
+        finally { syncingWindowsStartup = false; }
+    }
+
+    private void WindowsStartupChanged(object sender, RoutedEventArgs e)
+    {
+        if (!initialized || exiting || syncingWindowsStartup) return;
+        try { WindowsStartup.SetEnabled(StartWithWindows.IsChecked == true); }
+        catch (Exception ex)
+        {
+            LoadWindowsStartup();
+            ShowError($"Could not update the Windows startup setting. {ex.Message}");
+        }
+    }
+
+    private void StartMinimizedChanged(object sender, RoutedEventArgs e)
+    {
+        if (!initialized || exiting) return;
+        try { preferences.SaveStartMinimized(StartMinimized.IsChecked == true); }
+        catch (Exception ex)
+        {
             StartMinimized.IsChecked = preferences.StartMinimized;
-            RememberProfile.IsChecked = preferences.RememberProfile;
             ShowError(ex.Message);
         }
     }

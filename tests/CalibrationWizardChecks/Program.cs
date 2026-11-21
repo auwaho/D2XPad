@@ -43,6 +43,7 @@ internal static class Program
             ProfileSelectionChecks.Run(dir);
             MappingLayoutChecks.Run();
             DesktopReliabilityChecks.Run(settings, Path.Combine(dir, "layouts"));
+            AutomaticConversionChecks.Run(dir);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

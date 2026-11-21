@@ -32,6 +32,8 @@ internal static class DesktopReliabilityChecks
         ConverterGeometry(DeviceLayout.Bluetooth85HF, hasExtras: true);
         ConverterGeometry(SaveSingleStickLayout(0xBE04, "Layout with no extras"), hasExtras: false);
         Console.WriteLine("Passed converter card alignment and anchored action at both viewport sizes with and without extras.");
+        SettingsGeometry();
+        Console.WriteLine("Passed settings card alignment at both viewport sizes with short and wrapped service status.");
         SingleLineStatusBar();
         Console.WriteLine("Passed fixed-height status layout, message priorities and diagnostic action visibility.");
         KeyboardFocusStyles();
@@ -290,6 +292,59 @@ internal static class DesktopReliabilityChecks
             }
         }
         finally { window.Close(); }
+    }
+
+    private static void SettingsGeometry()
+    {
+        var window = new MainWindow();
+        try
+        {
+            window.WorkspaceTabs.SelectedItem = window.SettingsTab;
+            var root = (FrameworkElement)window.Content;
+            string[] messages =
+            [
+                "Install once to start conversion without a Windows prompt.",
+                string.Concat(Enumerable.Repeat("The conversion service is installed but stopped. ", 7))
+            ];
+            foreach (var viewport in new[] { new Size(1014, 564), new Size(812, 472) })
+            {
+                foreach (string message in messages)
+                {
+                    window.ConversionServiceStatusText.Text = message;
+                    root.Measure(viewport);
+                    root.Arrange(new Rect(viewport));
+                    root.UpdateLayout();
+
+                    var app = CardFor(window.StartAutomatically);
+                    var service = CardFor(window.InstallConversionServiceButton);
+                    Expect(root.IsAncestorOf(app) && root.IsAncestorOf(service) && app.ActualHeight > 0 && service.ActualHeight > 0,
+                        "Both Settings cards must be laid out on the Settings tab.");
+                    Point appOrigin = app.TranslatePoint(new Point(), root);
+                    Point serviceOrigin = service.TranslatePoint(new Point(), root);
+                    Expect(appOrigin.X + app.ActualWidth < serviceOrigin.X, "The service card must sit to the right of the app card.");
+                    Near(app.ActualWidth, service.ActualWidth, "The Settings card widths must match.");
+                    Near(appOrigin.Y, serviceOrigin.Y, "The Settings card tops must align.");
+                    Near(appOrigin.Y + app.ActualHeight, serviceOrigin.Y + service.ActualHeight, "The Settings card bottoms must align.");
+
+                    var status = window.ConversionServiceStatusText;
+                    var action = window.InstallConversionServiceButton;
+                    double actionTop = action.TranslatePoint(new Point(), service).Y;
+                    double statusBottom = status.TranslatePoint(new Point(0, status.ActualHeight), service).Y;
+                    Expect(actionTop >= statusBottom, "The service action must stay below the status when it wraps.");
+                    double bottomInset = service.Padding.Bottom + service.BorderThickness.Bottom;
+                    Near(actionTop + action.ActualHeight + bottomInset, service.ActualHeight,
+                        "The service action must stay at the bottom of its card.");
+                }
+            }
+        }
+        finally { window.Close(); }
+
+        static Border CardFor(FrameworkElement child)
+        {
+            for (DependencyObject? item = child.Parent; item != null; item = LogicalTreeHelper.GetParent(item))
+                if (item is Border border) return border;
+            throw new InvalidDataException($"The {child.Name} control has no settings card.");
+        }
     }
 
     private static void Near(double actual, double expected, string problem) =>

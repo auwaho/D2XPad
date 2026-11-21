@@ -5,7 +5,7 @@ using D2XPad.SeriesProbe;
 
 namespace D2XPad.Desktop;
 
-internal sealed record DeviceChoice(string Path, string Label, string LayoutId, DeviceLayout? Layout = null)
+internal sealed record DeviceChoice(string Path, string Label, string LayoutId, DeviceLayout? Layout = null, string? ContainerId = null)
 {
     public override string ToString() => Label;
 }
@@ -46,7 +46,7 @@ internal sealed class EngineClient : IDisposable
         {
             var layout = PhysicalSession.LayoutFor(d)!;
             return new DeviceChoice(d.Path, devices.Length == 1 ? layout.ShortName : $"{layout.ShortName} {i + 1} · {d.ContainerId ?? d.Path}",
-                layout.Id, layout);
+                layout.Id, layout, d.ContainerId);
         }).ToArray();
     }, token);
 
@@ -118,7 +118,8 @@ internal sealed class EngineClient : IDisposable
             status.VibrationEnabled, status.VibrationProblem);
     }
 
-    public async Task StartAsync(string profile, DeviceChoice? device, CancellationToken token, bool vibrationEnabled = false)
+    public async Task StartAsync(string profile, DeviceChoice? device, CancellationToken token, bool vibrationEnabled = false,
+        LiveOutputMode outputMode = LiveOutputMode.Auto)
     {
         token.ThrowIfCancellationRequested();
         if (await ReadAsync(token).ConfigureAwait(false) != null) return;
@@ -132,6 +133,16 @@ internal sealed class EngineClient : IDisposable
         start.ArgumentList.Add("--profile");
         start.ArgumentList.Add(profile);
         if (vibrationEnabled) start.ArgumentList.Add("--vibration");
+        if (outputMode != LiveOutputMode.Auto)
+        {
+            start.ArgumentList.Add("--output");
+            start.ArgumentList.Add(outputMode switch
+            {
+                LiveOutputMode.Service => "service",
+                LiveOutputMode.Portable => "portable",
+                _ => throw new ArgumentOutOfRangeException(nameof(outputMode))
+            });
+        }
         if (device != null)
         {
             start.ArgumentList.Add("--device-path");
@@ -168,7 +179,9 @@ internal sealed class EngineClient : IDisposable
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
             child.Stop();
-            throw new TimeoutException("The converter did not start in time. Check the Windows permission prompt and try again.");
+            throw new TimeoutException(outputMode == LiveOutputMode.Service
+                ? "The converter did not start in time. Check the conversion service status in Settings."
+                : "The converter did not start in time. Check the Windows permission prompt and try again.");
         }
         catch { child.Stop(); throw; }
     }

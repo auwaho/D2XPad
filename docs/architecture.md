@@ -26,6 +26,8 @@ By default, the portable package starts that host with Windows elevation for eac
 
 The service owns one virtual output at a time. Closing the connection or stopping the session releases that output, and the host also has an inactivity timeout. An installed but unavailable service produces an error so the user can diagnose the service state. Removing the optional service restores portable startup.
 
+When **Start conversion automatically** is enabled, the desktop waits for the saved physical controller in the signed-in user's session, including when the window is hidden. It matches the device's layout and physical identity, then starts the converter with the saved profile and explicitly requests service output. Initial waiting uses no virtual device or XInput slot. The same session handles input and reconnection once conversion is running. Stop and Exit cancel the desktop's wait as well as ending active conversion.
+
 A compatible profile switch resets Xbox output to neutral on the existing slot. Disconnect and Windows suspend also neutralize output. Once the same physical device is available and its inputs return to rest, the session can resume on the existing virtual controller. Stopping conversion releases that controller.
 
 ## Vibration

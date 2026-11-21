@@ -7,15 +7,17 @@ internal sealed class DesktopPreferences
 {
     private sealed record Settings(string? Profile = null, bool StartMinimized = false,
         string? DevicePath = null, string? LayoutId = null, Dictionary<string, string>? ProfilesByLayout = null,
-        Dictionary<string, bool>? VibrationByLayout = null);
+        Dictionary<string, bool>? VibrationByLayout = null, bool StartAutomatically = false, string? ContainerId = null);
 
     private readonly string path = Path.GetFullPath(Environment.GetEnvironmentVariable("D2XPAD_DESKTOP_SETTINGS") ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "D2XPad", "desktop.json"));
     private Settings? loaded;
     private Settings Current => loaded ??= Load();
     public bool StartMinimized => Current.StartMinimized;
+    public bool StartAutomatically => Current.StartAutomatically;
     public string? DevicePath => Current.DevicePath;
     public string? LayoutId => Current.LayoutId;
+    public string? ContainerId => Current.ContainerId;
 
     internal static bool SupportsVibration(string? layoutId) => layoutId == DeviceLayout.Bluetooth85HF.Id;
 
@@ -63,11 +65,14 @@ internal sealed class DesktopPreferences
         Save(preferences with { Profile = profile, ProfilesByLayout = profiles });
     }
 
-    public void SaveDevice(string devicePath, string layoutId)
+    public void SaveDevice(string devicePath, string layoutId, string? containerId = null)
     {
         var preferences = Current;
-        if (preferences.DevicePath == devicePath && preferences.LayoutId == layoutId) return;
-        Save(preferences with { DevicePath = devicePath, LayoutId = layoutId });
+        bool sameDevice = string.Equals(preferences.DevicePath, devicePath, StringComparison.OrdinalIgnoreCase) &&
+            preferences.LayoutId == layoutId;
+        if (sameDevice && (containerId == null ||
+            string.Equals(preferences.ContainerId, containerId, StringComparison.OrdinalIgnoreCase))) return;
+        Save(preferences with { DevicePath = devicePath, LayoutId = layoutId, ContainerId = containerId });
     }
 
     public void SaveStartMinimized(bool startMinimized)
@@ -75,6 +80,13 @@ internal sealed class DesktopPreferences
         var preferences = Current;
         if (preferences.StartMinimized == startMinimized) return;
         Save(preferences with { StartMinimized = startMinimized });
+    }
+
+    public void SaveStartAutomatically(bool enabled)
+    {
+        var preferences = Current;
+        if (preferences.StartAutomatically == enabled) return;
+        Save(preferences with { StartAutomatically = enabled });
     }
 
     private void Save(Settings value)

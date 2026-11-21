@@ -39,11 +39,7 @@ public partial class MainWindow
 
     private void UpdateControllerWorkspace(string? selectedId = null)
     {
-        if (WorkspaceTabs.SelectedItem == SettingsTab)
-        {
-            SettingsController.Text = DeviceTitle.Text;
-            UpdateConversionServiceSettings();
-        }
+        if (WorkspaceTabs.SelectedItem == SettingsTab) UpdateConversionServiceSettings();
         if (WorkspaceTabs.SelectedItem != ControllersTab) return;
 
         string currentLayout = frame?.LayoutId ?? (DevicePicker.SelectedItem as DeviceChoice)?.LayoutId ?? layout.Id;
@@ -216,7 +212,8 @@ public partial class MainWindow
             ReleasePreview();
             using (EngineClient.ReserveStoppedConverter()) mutate(entry);
             SetDevices(await engine.DevicesAsync(lifetime.Token));
-            if (DevicePicker.SelectedItem is DeviceChoice device && device.LayoutId != layout.Id) SelectDeviceProfile(device);
+            if (DevicePicker.SelectedItem is DeviceChoice device && device.LayoutId != layout.Id)
+                SelectDeviceProfile(device, remember: !preferences.StartAutomatically);
             else
             {
                 var activeLayout = DeviceLayout.Supported.FirstOrDefault(d => d.Id == layout.Id) ?? DeviceLayout.Resolve(DeviceLayout.Bluetooth85HF.Id);
@@ -264,12 +261,5 @@ public partial class MainWindow
             StartMinimized.IsChecked = preferences.StartMinimized;
             ShowSettingsSaveError(ex);
         }
-    }
-
-    private void GoToControllers(object sender, RoutedEventArgs e)
-    {
-        WorkspaceTabs.SelectedItem = ControllersTab;
-        UpdateControllerWorkspace(frame?.LayoutId ?? (DevicePicker.SelectedItem as DeviceChoice)?.LayoutId ?? layout.Id);
-        ControllersTab.Focus();
     }
 }

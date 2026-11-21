@@ -59,7 +59,8 @@ public partial class MainWindow
     {
         if (statusSuccess != null && Environment.TickCount64 >= statusSuccessUntil) statusSuccess = null;
         var next = (statusIssue is { Severity: StatusSeverity.Error } ? statusIssue : null) ?? profileProblem ?? pollProblem
-            ?? statusIssue ?? (statusContext is { Severity: StatusSeverity.Warning } || busy ? statusContext : null)
+            ?? (automaticProblem is { Severity: StatusSeverity.Error } ? automaticProblem : null)
+            ?? statusIssue ?? automaticProblem ?? (statusContext is { Severity: StatusSeverity.Warning } || busy ? statusContext : null)
             ?? statusSuccess ?? statusContext;
         if (next == shownStatus) return;
         shownStatus = next;

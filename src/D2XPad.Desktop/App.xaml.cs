@@ -60,6 +60,7 @@ public partial class App : Application
             tray.MouseClick += (_, args) => { if (args.Button == Forms.MouseButtons.Left) ShowWindow(); };
             showListener = ThreadPool.RegisterWaitForSingleObject(showRequest,
                 (_, _) => Dispatcher.InvokeAsync(ShowWindow), null, Timeout.Infinite, false);
+            window.BeginAutomaticConversion();
             if (!window.ShouldStartMinimized) window.Show();
             trayTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
             trayTimer.Tick += RefreshTray;
@@ -79,6 +80,8 @@ public partial class App : Application
         readingOutput = true;
         try
         {
+            await window.PollAutomaticConversionAsync();
+            if (closing || stopping) return;
             bool? active = await window.ReadTrayOutputAsync();
             if (active is null || closing || stopping) return;
             var next = active.Value ? trayIcon : stoppedIcon;

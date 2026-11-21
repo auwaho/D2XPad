@@ -16,15 +16,23 @@ The status bar shows one message at a time and gives errors priority over warnin
 
 Closing the window keeps conversion running in the system tray. Click the **D2X** tray icon to reopen it. **Stop conversion** releases the virtual controller, and **Exit D2XPad** in the tray menu closes the app.
 
-In **Settings → App**, **Start with Windows** launches D2XPad when you sign in. **Start minimized in the tray** keeps the main window hidden on startup. Both options are off by default. Start conversion from the **Converter** tab. D2XPad remembers the last selected profile for each controller layout.
+In **Settings → App**, **Start with Windows** launches D2XPad when you sign in. **Start minimized in the tray** keeps the main window hidden on startup. Both options are off by default. D2XPad remembers the last selected profile for each controller layout.
 
 If you move the portable app, turn on **Start with Windows** again from the new location to update the startup path.
 
 ## Start conversion without repeated Windows approval
 
-With conversion stopped, open **Settings → Conversion service → Install service** and approve the Windows prompt. The optional Windows service starts automatically after a restart. **Start conversion** still starts each conversion on demand, and uses the running service without another approval prompt. The service is available to the Windows account that installed it.
+With conversion stopped, open **Settings → Conversion service → Install service** and approve the Windows prompt. The optional Windows service starts automatically after a restart. **Start conversion** uses the running service without another approval prompt. The service is available to the Windows account that installed it.
 
-Use **Remove service** in the same section to uninstall it. Windows requests approval for removal. Subsequent conversions use the portable driver host and can prompt for approval again. To update the service, remove it and then install it from the new D2XPad package.
+Use **Remove service** in the same section to uninstall it. Windows requests approval for removal. Subsequent manual starts use the portable driver host and can prompt for approval again. To update the service, remove it and then install it from the new D2XPad package.
+
+## Start conversion automatically
+
+Select a controller and profile, install the conversion service, and enable **Settings → App → Start conversion automatically**. This option is off by default. It applies each time D2XPad starts, including launches with the main window hidden in the tray. The three startup options can be used independently.
+
+D2XPad waits for the selected controller and uses its last profile. The **Waiting for controller** status appears while the device is offline. The virtual Xbox is created when that controller connects. Automatic startup uses the installed service, so it never opens a Windows approval prompt.
+
+**Stop conversion** cancels the wait or releases an active virtual Xbox for this app launch. Use **Start conversion** to resume, even if the saved controller is still offline. **Exit D2XPad** also cancels the wait and releases the virtual controller. If the physical controller disconnects during an active conversion, D2XPad keeps the Xbox on the same slot in a neutral state until the controller returns.
 
 ## Built-in 85HF profiles
 

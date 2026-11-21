@@ -251,32 +251,28 @@
               <TextBlock Text="Settings" Style="{StaticResource PageTitle}"/>
               <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Border Style="{StaticResource Card}">
+                <Border Style="{StaticResource Card}" VerticalAlignment="Stretch">
                   <StackPanel>
                     <TextBlock Text="App" Style="{StaticResource CardTitle}" Margin="0,0,0,7"/>
                     <CheckBox x:Name="StartWithWindows" Content="Start with Windows" Checked="WindowsStartupChanged" Unchecked="WindowsStartupChanged" Style="{StaticResource PreferenceCheck}"/>
                     <CheckBox x:Name="StartMinimized" Content="Start minimized in the tray" Checked="StartMinimizedChanged" Unchecked="StartMinimizedChanged" Style="{StaticResource PreferenceCheck}"/>
+                    <CheckBox x:Name="StartAutomatically" Content="Start conversion automatically" Checked="StartAutomaticallyChanged" Unchecked="StartAutomaticallyChanged" Style="{StaticResource PreferenceCheck}"/>
                   </StackPanel>
                 </Border>
-                <Border Style="{StaticResource Card}" Grid.Column="2">
-                  <StackPanel>
-                    <TextBlock Text="Controller settings" Style="{StaticResource CardTitle}"/>
-                    <TextBlock x:Name="SettingsController" Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,10"/>
-                    <Button x:Name="OpenControllerSettings" HorizontalAlignment="Left" Style="{StaticResource ActionButton}"
-                            Content="Configure controller" Click="GoToControllers"/>
-                  </StackPanel>
+                <Border Style="{StaticResource Card}" Grid.Column="2" VerticalAlignment="Stretch">
+                  <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="Conversion service" Style="{StaticResource CardTitle}"/>
+                      <TextBlock x:Name="ConversionServiceStatusText" AutomationProperties.AutomationId="ConversionServiceStatusText"
+                                 Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,10"/>
+                    </StackPanel>
+                    <Button x:Name="InstallConversionServiceButton" Grid.Row="1" AutomationProperties.AutomationId="InstallConversionServiceButton"
+                            HorizontalAlignment="Left" Style="{StaticResource ActionButton}"
+                            Content="Install service" Click="ChangeConversionService" IsEnabled="False"/>
+                  </Grid>
                 </Border>
               </Grid>
-              <Border Style="{StaticResource Card}" Margin="0,12,0,0">
-                <StackPanel>
-                  <TextBlock Text="Conversion service" Style="{StaticResource CardTitle}"/>
-                  <TextBlock x:Name="ConversionServiceStatusText" AutomationProperties.AutomationId="ConversionServiceStatusText"
-                             Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,10"/>
-                  <Button x:Name="InstallConversionServiceButton" AutomationProperties.AutomationId="InstallConversionServiceButton"
-                          HorizontalAlignment="Left" Style="{StaticResource ActionButton}"
-                          Content="Install service" Click="ChangeConversionService" IsEnabled="False"/>
-                </StackPanel>
-              </Border>
             </StackPanel>
           </ScrollViewer>
         </TabItem>

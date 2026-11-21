@@ -74,6 +74,8 @@ public partial class MainWindow
                     if (process.ExitCode != 0)
                         throw new IOException($"Conversion service setup returned exit code {process.ExitCode}.");
                     ShowSuccess(install ? "Conversion service installed." : "Conversion service removed.");
+                    if (install && preferences.StartAutomatically && automaticProblem?.Severity == StatusSeverity.Warning)
+                        ArmAutomaticConversion();
                 }
                 catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
                 {

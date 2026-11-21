@@ -45,6 +45,7 @@ public partial class MainWindow : Window
         timer.Tick += Refresh;
         chosenProfile = preferences.ReadProfile(preferences.LayoutId);
         StartMinimized.IsChecked = preferences.StartMinimized;
+        StartAutomatically.IsChecked = preferences.StartAutomatically;
         StartWithWindows.Loaded += (_, _) => LoadWindowsStartup();
         Loaded += (_, _) =>
         {
@@ -219,17 +220,22 @@ public partial class MainWindow : Window
 
     private void SetDevices(IReadOnlyList<DeviceChoice> fresh)
     {
-        if (devices.SequenceEqual(fresh)) return;
+        var automaticTarget = preferences.StartAutomatically && frame == null ? RememberedAutomaticTarget : null;
         var prior = DevicePicker.SelectedItem as DeviceChoice;
-        devices = fresh;
-        var selected = devices.FirstOrDefault(d => string.Equals(d.Path, frame?.DevicePath ?? prior?.Path ?? preferences.DevicePath,
-            StringComparison.OrdinalIgnoreCase));
-        if (selected == null && frame == null && preferences.LayoutId is { } remembered)
+        var selected = automaticTarget?.Select(fresh);
+        if (automaticTarget == null)
         {
-            var matching = devices.Where(d => d.LayoutId == remembered).ToArray();
-            if (matching.Length == 1) selected = matching[0];
+            selected = fresh.FirstOrDefault(d => string.Equals(d.Path, frame?.DevicePath ?? prior?.Path ?? preferences.DevicePath,
+                StringComparison.OrdinalIgnoreCase));
+            if (selected == null && frame == null && preferences.LayoutId is { } remembered)
+            {
+                var matching = fresh.Where(d => d.LayoutId == remembered).ToArray();
+                if (matching.Length == 1) selected = matching[0];
+            }
+            if (selected == null && fresh.Count == 1) selected = fresh[0];
         }
-        if (selected == null && devices.Count == 1) selected = devices[0];
+        if (devices.SequenceEqual(fresh) && Equals(prior, selected)) return;
+        devices = fresh;
         syncing = true;
         try
         {
@@ -240,7 +246,7 @@ public partial class MainWindow : Window
         finally { syncing = false; }
         if (!busy && !calibrating && frame == null && selected != null &&
             (selected.LayoutId != layout.Id || !string.Equals(prior?.Path, selected.Path, StringComparison.OrdinalIgnoreCase)))
-            SelectDeviceProfile(selected);
+            SelectDeviceProfile(selected, remember: !preferences.StartAutomatically);
     }
 
     private void DeviceChanged(object sender, SelectionChangedEventArgs e)
@@ -254,14 +260,15 @@ public partial class MainWindow : Window
         Draw();
     }
 
-    private void SelectDeviceProfile(DeviceChoice device)
+    private void SelectDeviceProfile(DeviceChoice device, bool remember = true)
     {
         var target = device.Layout ?? DeviceLayout.Resolve(device.LayoutId);
         if (selectedBindings?.Layout.Id != device.LayoutId)
             LoadProfiles(null, target);
+        if (!remember) return;
         TrySavePreference(() =>
         {
-            preferences.SaveDevice(device.Path, device.LayoutId);
+            preferences.SaveDevice(device.Path, device.LayoutId, device.ContainerId);
             if (chosenProfile != null) preferences.SaveProfile(chosenProfile, device.LayoutId);
         });
     }
@@ -289,7 +296,7 @@ public partial class MainWindow : Window
                     finally { syncing = false; }
                     string? chosen = original != null && layout.Id == saved.Id ? chosenProfile : null;
                     LoadProfiles(chosen, saved);
-                    if (current != null) preferences.SaveDevice(current.Path, saved.Id);
+                    if (current != null) preferences.SaveDevice(current.Path, saved.Id, current.ContainerId);
                     if (chosenProfile != null) preferences.SaveProfile(chosenProfile, saved.Id);
                 }
                 else LoadProfiles(frame.Profile);
@@ -352,24 +359,31 @@ public partial class MainWindow : Window
         VirtualStatus.Text = frame is { } f ? $"XInput slot {f.Slot} · {(f.Output == null ? "Unavailable" : "Connected")}"
             : statusKnown ? "" : "Checking XInput…";
         VirtualStatus.Visibility = VirtualStatus.Text.Length == 0 ? Visibility.Hidden : Visibility.Visible;
-        bool waitingForController = running && !connected;
+        bool waitingForController = automaticWaiting || running && !connected;
+        bool conversionFailed = !running && automaticProblem?.Severity == StatusSeverity.Error;
         ActivityText.Text = !statusKnown ? "Checking session" : suspended ? "Suspended" :
-            waitingForController ? "Waiting for controller" : running ? "Running" : "Stopped";
+            waitingForController ? "Waiting for controller" : running ? "Running" : conversionFailed ? "Error" : "Stopped";
         bool attention = statusKnown && (suspended || waitingForController);
-        ActivityDot.Fill = (Brush)FindResource(attention ? "Warning" : running ? "Accent" : "Stopped");
-        ActivityText.Foreground = (Brush)FindResource(attention ? "Warning" : "SecondaryText");
-        PowerButton.Content = running ? "Stop conversion" : "Start conversion";
-        PowerButton.Background = running ? (Brush)FindResource("StopSurface") : (Brush)FindResource("Accent");
-        PowerButton.Foreground = running ? Brushes.WhiteSmoke : (Brush)FindResource("StartInk");
+        ActivityDot.Fill = (Brush)FindResource(attention ? "Warning" : running ? "Accent" : conversionFailed ? "Error" : "Stopped");
+        ActivityText.Foreground = (Brush)FindResource(attention ? "Warning" : conversionFailed ? "Error" : "SecondaryText");
+        bool conversionRequested = running || automaticWaiting;
+        PowerButton.Content = conversionRequested ? "Stop conversion" : "Start conversion";
+        PowerButton.Background = conversionRequested ? (Brush)FindResource("StopSurface") : (Brush)FindResource("Accent");
+        PowerButton.Foreground = conversionRequested ? Brushes.WhiteSmoke : (Brush)FindResource("StartInk");
         bool compatible = device != null && device.LayoutId == layout.Id && selectedBindings != null;
-        PowerButton.IsEnabled = !busy && !exiting && statusKnown && (running || compatible && profileProblem == null);
+        bool canWait = preferences.StartAutomatically && RememberedAutomaticTarget != null;
+        PowerButton.IsEnabled = !busy && !exiting && statusKnown && (conversionRequested || canWait || compatible && profileProblem == null);
+        StartAutomatically.IsEnabled = !busy && !exiting;
         ProfilePicker.IsEnabled = ImportButton.IsEnabled = !busy && !exiting && statusKnown;
         EditButton.IsEnabled = !busy && !exiting && chosenProfile != null && profileProblem == null;
         DeleteButton.IsEnabled = !busy && !exiting && statusKnown && selection?.CanReplace == true;
         DevicePicker.IsEnabled = !busy && !exiting && !running;
         CalibrateButton.IsEnabled = !busy && !exiting && !calibrating;
-        bool reconnect = waitingForController && !suspended;
-        string? guidance = reconnect ? "Reconnect the controller to resume."
+        bool reconnect = running && waitingForController && !suspended;
+        string? guidance = automaticWaiting ? (RememberedAutomaticTarget == null
+                ? "Set a controller as input to start automatic conversion."
+                : automaticServiceDeadline != null ? "Waiting for the conversion service." : $"Waiting for your {shortName}.")
+            : reconnect ? "Reconnect the controller to resume."
             : !running && statusKnown && devices.Count == 0 ? $"Connect your {layout.ShortName} via {layout.Transport}."
             : !running && devices.Count > 1 && device == null ? "Select a controller to start."
             : !running && device != null && device.LayoutId != layout.Id ? "Choose a profile for this controller." : null;
@@ -381,6 +395,7 @@ public partial class MainWindow : Window
             : running && frame?.DevicePath == null && devices.Count > 1 ? "Restart the converter to identify its physical device."
             : "Move a stick or press and release a button.";
         Tester.Update(physical, frame?.Output, missing, running ? "Waiting for the XInput slot."
+            : automaticWaiting ? "Xbox output starts when the selected controller connects."
             : "Start conversion to test the virtual Xbox controller.");
         UpdateControllerWorkspace();
     }
@@ -498,9 +513,23 @@ public partial class MainWindow : Window
 
     private async void ToggleConverter(object sender, RoutedEventArgs e)
     {
+        if (busy || exiting) return;
+        if (automaticWaiting && frame == null)
+        {
+            CancelAutomaticConversion();
+            Draw();
+            return;
+        }
         bool stop = frame != null;
         var selected = chosenProfile;
         var device = DevicePicker.SelectedItem as DeviceChoice;
+        if (!stop && (selected == null || device == null) && preferences.StartAutomatically && RememberedAutomaticTarget != null)
+        {
+            ArmAutomaticConversion();
+            Draw();
+            return;
+        }
+        CancelAutomaticConversion();
         string progress = stop ? "Stopping conversion…"
             : ConversionService.Status() == ConversionServiceStatus.Missing
                 ? "Starting conversion. Approve the Windows prompt if shown."
@@ -510,13 +539,20 @@ public partial class MainWindow : Window
         {
             if (stop) await engine.StopAsync(lifetime.Token);
             else if (selected != null && device != null)
-            {
-                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                starting = attempt;
-                try { await engine.StartAsync(selected, device, attempt.Token, preferences.VibrationEnabled(device.LayoutId)); }
-                finally { starting = null; }
-                TrySavePreference(() => preferences.SaveProfile(selected, device.LayoutId));
-            }
+                await StartConverterAsync(selected, device, LiveOutputMode.Auto);
+        });
+    }
+
+    private async Task StartConverterAsync(string profile, DeviceChoice device, LiveOutputMode outputMode)
+    {
+        using var attempt = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        starting = attempt;
+        try { await engine.StartAsync(profile, device, attempt.Token, preferences.VibrationEnabled(device.LayoutId), outputMode); }
+        finally { starting = null; }
+        TrySavePreference(() =>
+        {
+            preferences.SaveDevice(device.Path, device.LayoutId, device.ContainerId);
+            preferences.SaveProfile(profile, device.LayoutId);
         });
     }
 
@@ -529,7 +565,7 @@ public partial class MainWindow : Window
         SetStatusIssue(null);
         SetStatusContext(message);
         PowerButton.IsEnabled = ProfilePicker.IsEnabled = DevicePicker.IsEnabled = ImportButton.IsEnabled =
-            EditButton.IsEnabled = DeleteButton.IsEnabled = false;
+            EditButton.IsEnabled = DeleteButton.IsEnabled = StartAutomatically.IsEnabled = false;
         UpdateControllerWorkspace();
         await sessionLock.WaitAsync();
         try
@@ -563,6 +599,7 @@ public partial class MainWindow : Window
     internal async Task StopForExitAsync()
     {
         exiting = true;
+        CancelAutomaticConversion();
         timer.Stop();
         starting?.Cancel();
         await sessionLock.WaitAsync();

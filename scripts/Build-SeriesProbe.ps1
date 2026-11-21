@@ -1,14 +1,14 @@
 param([switch]$SdkOnly)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$deps = Join-Path $root 'artifacts/deps/HIDMaestro-2.2.0'
+$deps = Join-Path $root 'artifacts/deps/HIDMaestro-2.3.0'
 $null = New-Item -ItemType Directory -Force $deps
-$archive = Join-Path $deps 'HIDMaestro-v2.2.0.zip'
-$expected = '3616ab27f5315359289d7f2c7e27572137101aa8671c815c629d0cb051c90a6f'
+$archive = Join-Path $deps 'HIDMaestro-v2.3.0.zip'
+$expected = 'fddb61b76d076aa2cf508a46c1e30e23aa75b4ae622d52b15e7259959fd12295'
 if (!(Test-Path -LiteralPath $archive)) {
     $temp = "$archive.$([guid]::NewGuid().ToString('N')).download"
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/hifihedgehog/HIDMaestro/releases/download/v2.2.0/HIDMaestro-v2.2.0.zip' -OutFile $temp
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/hifihedgehog/HIDMaestro/releases/download/v2.3.0/HIDMaestro-v2.3.0.zip' -OutFile $temp
         if ((Get-FileHash -LiteralPath $temp).Hash -ne $expected) { throw 'Unexpected release SHA-256.' }
         Move-Item -LiteralPath $temp -Destination $archive
     }

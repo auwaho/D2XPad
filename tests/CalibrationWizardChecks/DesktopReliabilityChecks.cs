@@ -32,6 +32,8 @@ internal static class DesktopReliabilityChecks
         ConverterGeometry(DeviceLayout.Bluetooth85HF, hasExtras: true);
         ConverterGeometry(SaveSingleStickLayout(0xBE04, "Layout with no extras"), hasExtras: false);
         Console.WriteLine("Passed converter card alignment and anchored action at both viewport sizes with and without extras.");
+        SingleLineStatusBar();
+        Console.WriteLine("Passed fixed-height status layout, message priorities and diagnostic action visibility.");
         KeyboardFocusStyles();
         Console.WriteLine("Passed shared native focus styles for tabs, the mint conversion button, selectors and tester toggles.");
     }
@@ -48,8 +50,10 @@ internal static class DesktopReliabilityChecks
             var active = Session(DeviceLayout.Bluetooth85HF, "southpaw-buttons");
             UpdateSession(window, active);
             Draw(window);
-            Expect(window.ErrorText.Text.Contains("Could not save preferences.", StringComparison.Ordinal),
-                "The failed preference write must be shown.");
+            Expect(window.StatusMessage.Text.StartsWith("Couldn't save settings.", StringComparison.Ordinal) &&
+                window.CopyStatusDetailsButton.Visibility == Visibility.Visible &&
+                !string.IsNullOrWhiteSpace(window.StatusTooltipText.Text),
+                "The failed preference write must show a short summary and offer diagnostic details.");
             ExpectRunning(window);
             UpdateSession(window, active);
             Draw(window);
@@ -290,6 +294,80 @@ internal static class DesktopReliabilityChecks
 
     private static void Near(double actual, double expected, string problem) =>
         Expect(Math.Abs(actual - expected) <= 1, $"{problem} Expected {expected:F1} DIP, got {actual:F1} DIP.");
+
+    private static void SingleLineStatusBar()
+    {
+        var setContext = typeof(MainWindow).GetMethod("SetStatusContext", PrivateInstance)!
+            .CreateDelegate<Action<MainWindow, string?, bool>>();
+        var showError = typeof(MainWindow).GetMethod("ShowError", PrivateInstance)!
+            .CreateDelegate<Action<MainWindow, string?, string?>>();
+        var showWarning = typeof(MainWindow).GetMethod("ShowWarning", PrivateInstance)!
+            .CreateDelegate<Action<MainWindow, string>>();
+        var showSuccess = typeof(MainWindow).GetMethod("ShowSuccess", PrivateInstance)!
+            .CreateDelegate<Action<MainWindow, string, int>>();
+        var window = new MainWindow();
+        try
+        {
+            var root = (FrameworkElement)window.Content;
+            void CheckStatus(string message, bool hasDetails = false)
+            {
+                Expect(window.StatusMessage.Text == message, $"Expected the status message '{message}'.");
+                Expect(window.CopyStatusDetailsButton.Visibility == (hasDetails ? Visibility.Visible : Visibility.Collapsed),
+                    "Copy details is only available when an error has diagnostic text.");
+                if (message.Length > 0)
+                    Expect(window.StatusIcon.Visibility == Visibility.Visible && window.StatusIcon.Data != null,
+                        "Every visible message must have a severity icon.");
+                foreach (var viewport in new[] { new Size(812, 472), new Size(1014, 564) })
+                {
+                    root.Measure(viewport);
+                    root.Arrange(new Rect(viewport));
+                    root.UpdateLayout();
+                    Near(window.StatusBar.ActualHeight, 30, "The status bar must always reserve 30 DIP.");
+                }
+            }
+
+            const string guidance = "Connect your 85HF via Bluetooth.";
+            const string saved = "Profile saved.";
+            const string warning = "Windows approval was canceled. Start conversion again.";
+            const string failure = "Couldn't save settings. File is in use.";
+            const string reconnect = "Reconnect the controller to resume.";
+
+            CheckStatus("");
+            setContext(window, guidance, false);
+            CheckStatus(guidance);
+            showSuccess(window, saved, 60_000);
+            CheckStatus(saved);
+            setContext(window, reconnect, true);
+            CheckStatus(reconnect);
+            showWarning(window, warning);
+            CheckStatus(warning);
+
+            string detail = "Unable to replace the file.\r\n" + new string('X', 300);
+            showError(window, failure, detail);
+            CheckStatus(failure, hasDetails: true);
+            Expect(window.StatusTooltipText.Text.Contains(detail, StringComparison.Ordinal) &&
+                window.CopyStatusDetailsLabel.Text == "Copy details" && window.CopyStatusDetailsButton.Focusable,
+                "A detailed error retains its full diagnostic text and offers a focusable copy action.");
+            Expect(window.StatusMessage.TextWrapping == TextWrapping.NoWrap &&
+                window.StatusMessage.TextTrimming == TextTrimming.CharacterEllipsis &&
+                AutomationProperties.GetLiveSetting(window.StatusMessage) == AutomationLiveSetting.Assertive,
+                "The error summary must be single-line, visually trimmed and assertive.");
+
+            showError(window, "Couldn't start conversion.\r\nTry again.", null);
+            CheckStatus("Couldn't start conversion. Try again.");
+            showError(window, null, null);
+            CheckStatus(reconnect);
+            setContext(window, guidance, false);
+            CheckStatus(saved);
+            showSuccess(window, saved, 0);
+            CheckStatus(guidance);
+            Expect(AutomationProperties.GetLiveSetting(window.StatusMessage) == AutomationLiveSetting.Polite,
+                "Informational messages must restore polite announcements.");
+            setContext(window, null, false);
+            CheckStatus("");
+        }
+        finally { window.Close(); }
+    }
 
     private static void KeyboardFocusStyles()
     {

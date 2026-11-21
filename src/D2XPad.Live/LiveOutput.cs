@@ -9,6 +9,12 @@ using HIDMaestro;
 
 namespace D2XPad.Live;
 
+internal sealed class DriverApprovalCanceledException(Exception? inner = null)
+    : InvalidOperationException("The Windows permission request was cancelled. Start the converter again to retry.", inner)
+{
+    internal const int DesktopExitCode = 3;
+}
+
 internal sealed class LiveOutput : IAsyncDisposable
 {
     private const string Prefix = "D2XPad.Live.";
@@ -89,7 +95,7 @@ internal sealed class LiveOutput : IAsyncDisposable
             try { host = Process.Start(start) ?? throw new IOException("Could not start the HIDMaestro driver host."); }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {
-                throw new InvalidOperationException("The Windows permission request was cancelled. Start the converter again to retry.", ex);
+                throw new DriverApprovalCanceledException(ex);
             }
             using var connect = CancellationTokenSource.CreateLinkedTokenSource(token);
             connect.CancelAfter(TimeSpan.FromSeconds(15));

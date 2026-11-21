@@ -108,8 +108,8 @@ internal static class RumbleProbe
         return matched && released && othersPresent ? 0 : 2;
     }
 
-    // The Xbox BT profile in SDK 2.2.0 has no semantic output decoder. Compare the actual packets
-    // across single-motor commands, including a repeated command and a final all-zero command.
+    // Compare the raw feedback packets across single-motor commands, including a repeated
+    // command and a final all-zero command.
     private static bool Matches(Feedback[] left, Feedback[] right, Feedback[] repeat, Feedback[] stopped)
     {
         foreach (var a in left.Where(p => p.Source is "HidOutput" or "XInput"))

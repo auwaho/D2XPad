@@ -20,7 +20,7 @@ flowchart LR
 
 ## Virtual output and session lifecycle
 
-The standard-user converter maintains physical Raw Input and controller state. An elevated HIDMaestro host installs the bundled driver when needed and owns the virtual device. It uses the `xbox-series-xs-bt` profile with independent triggers. A short trigger sequence confirms which XInput slot follows the virtual controller before forwarding physical input. [HIDMaestro 2.2.0 SDK](https://github.com/hifihedgehog/HIDMaestro/releases/tag/v2.2.0)
+The standard-user converter maintains physical Raw Input and controller state. An elevated HIDMaestro host installs the bundled driver when needed and owns the virtual device. It uses the `xbox-series-xs-bt` profile with independent triggers. A short trigger sequence confirms which XInput slot follows the virtual controller before forwarding physical input. The build pins the SHA-256 of the official HIDMaestro release archive. [HIDMaestro 2.3.0 SDK](https://github.com/hifihedgehog/HIDMaestro/releases/tag/v2.3.0)
 
 A compatible profile switch resets Xbox output to neutral on the existing slot. Disconnect and Windows suspend also neutralize output. Once the same physical device is available and its inputs return to rest, the session can resume on the existing virtual controller. Stopping conversion releases that controller.
 

@@ -25,7 +25,7 @@ public partial class MainWindow
         if (WorkspaceTabs.SelectedItem == ControllersTab)
         {
             try { RefreshControllerLibrary(); }
-            catch (Exception ex) { ShowError(ex.Message); }
+            catch (Exception ex) { ShowError("Couldn't load saved controllers.", ex.ToString()); }
             nextDevices = 0;
         }
         Draw();
@@ -140,7 +140,7 @@ public partial class MainWindow
         var active = frame?.LayoutId == id ? frame : null;
         if (enabled == (active?.VibrationEnabled ?? preferences.VibrationEnabled(id))) return;
 
-        await RunAction("Updating vibration…", async () =>
+        await RunAction("Updating vibration…", "Couldn't update vibration.", async () =>
         {
             if (active != null)
             {
@@ -156,7 +156,7 @@ public partial class MainWindow
     private async void UseController(object sender, RoutedEventArgs e)
     {
         if (!LibraryEditable || SelectedInstance is not { } device) return;
-        await RunAction("Selecting controller…", async () =>
+        await RunAction("Selecting controller…", "Couldn't select the controller.", async () =>
         {
             await ReadSession();
             if (frame != null) throw new InvalidOperationException("Stop the converter before switching controllers.");
@@ -180,11 +180,10 @@ public partial class MainWindow
     private async void TestVibration(object sender, RoutedEventArgs e)
     {
         if (!LibraryEditable || SelectedInstance is not { } device || device.LayoutId != DeviceLayout.Bluetooth85HF.Id) return;
-        await RunAction("Testing vibration…", async () =>
+        await RunAction("Testing vibration…", "Couldn't test vibration.", async () =>
         {
             await Task.Run(() => RumbleSurvey.PulseAsync(lifetime.Token, device.Path), lifetime.Token);
-            savedMessage = "The Bluetooth test pulse and stop command were sent.";
-            savedMessageUntil = Environment.TickCount64 + 5000;
+            ShowSuccess("Vibration test complete.");
         });
     }
 
@@ -209,7 +208,7 @@ public partial class MainWindow
     }
 
     private Task ChangeSavedController(ControllerEntry entry, Action<ControllerEntry> mutate, string message) =>
-        RunAction(message, async () =>
+        RunAction(message, "Couldn't update the saved controller.", async () =>
         {
             ReleasePreview();
             using (EngineClient.ReserveStoppedConverter()) mutate(entry);
@@ -221,8 +220,7 @@ public partial class MainWindow
                 LoadProfiles(activeLayout.Id == layout.Id ? chosenProfile : null, activeLayout);
             }
             RefreshControllerLibrary(entry.Layout.Id);
-            savedMessage = $"Updated {entry.Layout.DisplayName}.";
-            savedMessageUntil = Environment.TickCount64 + 5000;
+            ShowSuccess("Saved controller updated.");
         });
 
     private void LoadWindowsStartup()
@@ -236,7 +234,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             StartWithWindows.IsEnabled = false;
-            ShowError($"Could not read the Windows startup setting. {ex.Message}");
+            ShowError("Couldn't read the Windows startup setting.", ex.ToString());
         }
         finally { syncingWindowsStartup = false; }
     }
@@ -244,22 +242,24 @@ public partial class MainWindow
     private void WindowsStartupChanged(object sender, RoutedEventArgs e)
     {
         if (!initialized || exiting || syncingWindowsStartup) return;
+        SetStatusIssue(null);
         try { WindowsStartup.SetEnabled(StartWithWindows.IsChecked == true); }
         catch (Exception ex)
         {
             LoadWindowsStartup();
-            ShowError($"Could not update the Windows startup setting. {ex.Message}");
+            ShowError("Couldn't change the Windows startup setting.", ex.ToString());
         }
     }
 
     private void StartMinimizedChanged(object sender, RoutedEventArgs e)
     {
         if (!initialized || exiting) return;
+        SetStatusIssue(null);
         try { preferences.SaveStartMinimized(StartMinimized.IsChecked == true); }
         catch (Exception ex)
         {
             StartMinimized.IsChecked = preferences.StartMinimized;
-            ShowError(ex.Message);
+            ShowSettingsSaveError(ex);
         }
     }
 

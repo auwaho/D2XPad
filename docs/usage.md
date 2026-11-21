@@ -12,6 +12,8 @@ You can switch compatible profiles while conversion is running. Release held con
 
 The input tester keeps its selected source when you switch tabs, open calibration or reconnect the controller.
 
+The status bar shows one message at a time and gives errors priority over warnings and confirmations. Confirmations disappear after a few seconds. When an error has technical details, use **Copy details** to copy the full diagnostic or hover over the message to read it.
+
 Closing the window keeps conversion running in the system tray. Click the **D2X** tray icon to reopen it. **Stop conversion** releases the virtual controller, and **Exit D2XPad** in the tray menu closes the app.
 
 In **Settings → App**, **Start with Windows** launches D2XPad when you sign in. **Start minimized in the tray** keeps the main window hidden on startup. Both options are off by default. Start conversion from the **Converter** tab. D2XPad remembers the last selected profile for each controller layout.

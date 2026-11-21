@@ -25,7 +25,8 @@ public partial class MainWindow : Window
     private EngineFrame? frame;
     private long nextStatus, nextDevices, nextPreview;
     private bool syncing, initialized, busy, exiting, statusKnown;
-    private string? profileProblem, previewTarget, pollProblem;
+    private StatusNotice? profileProblem, pollProblem;
+    private string? previewTarget;
     private string? chosenProfile;
     private ProfileEditSnapshot? selection;
     private DeviceLayout layout = DeviceLayout.Bluetooth85HF;
@@ -34,8 +35,6 @@ public partial class MainWindow : Window
     private DeviceLayout? testerLayout;
     private PadBindings? testerBindings;
     private bool calibrating;
-    private string? savedMessage;
-    private long savedMessageUntil;
 
     public MainWindow()
     {
@@ -70,7 +69,7 @@ public partial class MainWindow : Window
     {
         nextDevices = nextStatus = 0;
         try { LoadProfiles(frame?.Profile ?? chosenProfile); }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError("Couldn't load profiles.", ex.ToString()); }
         timer.Start();
         Refresh(this, EventArgs.Empty);
     }
@@ -124,14 +123,14 @@ public partial class MainWindow : Window
                 layout = bindings.Layout;
                 selectedBindings = bindings;
             }
-            catch (Exception ex) { profileProblem = ex.Message; }
+            catch (Exception ex) { profileProblem = new("Couldn't load the selected profile.", StatusSeverity.Error, ex.ToString()); }
         }
         DeviceTitle.Text = layout.DisplayName;
         DeleteButton.ToolTip = selection?.CanReplace == true
             ? "Delete the selected profile from the catalog."
             : "Only saved or imported profiles can be deleted here.";
         UpdateTesterLayout(layout);
-        if (profileProblem != null) ShowError(profileProblem);
+        UpdateStatusBar();
     }
 
     private void UpdateTesterLayout(DeviceLayout? deviceLayout)
@@ -160,19 +159,14 @@ public partial class MainWindow : Window
                 if (frame?.DevicePath == null || devices.Count == 0 || WorkspaceTabs.SelectedItem == ControllersTab)
                     SetDevices(await engine.DevicesAsync(lifetime.Token));
             }
+            if (statusKnown) pollProblem = null;
             if (IsVisible && !exiting) Draw();
-            if (statusKnown && pollProblem != null)
-            {
-                if (ErrorText.Text == pollProblem) ShowError(profileProblem);
-                pollProblem = null;
-            }
         }
         catch (OperationCanceledException) when (exiting) { }
         catch (Exception ex)
         {
             nextStatus = Environment.TickCount64 + 900;
-            pollProblem = ex.Message;
-            ShowError(pollProblem);
+            pollProblem = new("Couldn't refresh controller status.", StatusSeverity.Error, ex.ToString());
             if (IsVisible && !exiting) Draw();
         }
         finally { sessionLock.Release(); }
@@ -190,7 +184,7 @@ public partial class MainWindow : Window
             throw;
         }
         UpdateSession(next);
-        if (engine.TakeRuntimeFailure() is { } failure) ShowError(failure);
+        if (engine.TakeRuntimeFailure() is { } failure) ShowError("Conversion stopped unexpectedly.", failure);
     }
 
     private void UpdateSession(EngineFrame? next)
@@ -208,7 +202,7 @@ public partial class MainWindow : Window
             || !string.Equals(previous.Profile, next.Profile, StringComparison.OrdinalIgnoreCase)))
         {
             try { LoadProfiles(next?.Profile ?? chosenProfile); }
-            catch (Exception ex) { ShowError(ex.Message); }
+            catch (Exception ex) { ShowError("Couldn't load the active profile.", ex.ToString()); }
             if (next != null) TrySavePreference(() => preferences.SaveProfile(next.Profile, next.LayoutId ?? layout.Id));
         }
         if (next != null) sessionLayout ??= GetDisplayLayout();
@@ -219,7 +213,7 @@ public partial class MainWindow : Window
         try { save(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowError($"Could not save preferences. {ex.Message}");
+            ShowSettingsSaveError(ex);
         }
     }
 
@@ -255,7 +249,7 @@ public partial class MainWindow : Window
         if (frame == null && !busy && DevicePicker.SelectedItem is DeviceChoice device)
         {
             try { SelectDeviceProfile(device); }
-            catch (Exception ex) { ShowError(ex.Message); }
+            catch (Exception ex) { ShowError("Couldn't select the controller.", ex.ToString()); }
         }
         Draw();
     }
@@ -283,7 +277,7 @@ public partial class MainWindow : Window
             ReleasePreview();
             var wizard = new CalibrationWizard(original, devicePath) { Owner = this };
             if (wizard.ShowDialog() != true || wizard.SavedLayout is not { } saved) return;
-            await RunAction("Loading calibrated controller…", async () =>
+            await RunAction("Loading calibrated controller…", "Couldn't load the calibrated controller.", async () =>
             {
                 await ReadSession();
                 SetDevices(await engine.DevicesAsync(lifetime.Token));
@@ -300,12 +294,10 @@ public partial class MainWindow : Window
                 }
                 else LoadProfiles(frame.Profile);
                 RefreshControllerLibrary(saved.Id);
-                savedMessage = frame == null ? $"Calibrated {saved.DisplayName}. The selected profile is ready."
-                    : $"Calibrated {saved.DisplayName}. Select it after stopping the current converter.";
-                savedMessageUntil = Environment.TickCount64 + 9000;
+                ShowSuccess(frame == null ? "Calibration saved." : "Calibration saved. Stop conversion to select it.");
             });
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError("Couldn't open controller calibration.", ex.ToString()); }
         finally
         {
             calibrating = false;
@@ -342,7 +334,7 @@ public partial class MainWindow : Window
             previewTarget = preview?.Path;
             nextPreview = Environment.TickCount64 + 1800;
             try { engine.SetPreviewDevice(preview); }
-            catch (Exception ex) { ShowError(ex.Message); }
+            catch (Exception ex) { ShowError("Couldn't read physical input.", ex.ToString()); }
         }
         bool connected = frame?.Connected ?? (device != null);
         bool suspended = frame?.Suspended == true;
@@ -376,14 +368,12 @@ public partial class MainWindow : Window
         DeleteButton.IsEnabled = !busy && !exiting && statusKnown && selection?.CanReplace == true;
         DevicePicker.IsEnabled = !busy && !exiting && !running;
         CalibrateButton.IsEnabled = !busy && !exiting && !calibrating;
-        string? guidance = !running && statusKnown && devices.Count == 0 ? $"Connect your {layout.ShortName} via {layout.Transport}."
+        bool reconnect = waitingForController && !suspended;
+        string? guidance = reconnect ? "Reconnect the controller to resume."
+            : !running && statusKnown && devices.Count == 0 ? $"Connect your {layout.ShortName} via {layout.Transport}."
             : !running && devices.Count > 1 && device == null ? "Select a controller to start."
-            : !running && device != null && device.LayoutId != layout.Id ? $"Choose a profile for {DeviceTitle.Text}." : null;
-        if (!busy)
-        {
-            bool recentlySaved = Environment.TickCount64 < savedMessageUntil;
-            SetWork(recentlySaved ? savedMessage : guidance, attention: !recentlySaved && guidance != null);
-        }
+            : !running && device != null && device.LayoutId != layout.Id ? "Choose a profile for this controller." : null;
+        if (!busy) SetStatusContext(guidance, warning: reconnect);
         var physical = connected && !suspended ? frame?.Physical ?? (preview != null ? engine.Preview : null) : null;
         string missing = suspended ? "Physical input is suspended."
             : !running && device == null && devices.Count > 0 ? "Select a physical controller."
@@ -429,9 +419,7 @@ public partial class MainWindow : Window
                     LoadProfiles(frame?.Profile ?? profile.Name);
                     TrySavePreference(() => preferences.SaveProfile(chosenProfile!, layout.Id));
                     if (frame != null) Tester.ShowXboxOutput();
-                    savedMessage = frame == null ? $"Saved “{profile.Name}” for the next start."
-                        : $"Applied “{profile.Name}” on XInput slot {frame.Slot}. Release the controls, then try your mapping.";
-                    savedMessageUntil = Environment.TickCount64 + 7000;
+                    ShowSuccess(frame == null ? "Profile saved." : "Profile saved and applied.");
                 }
                 finally
                 {
@@ -442,13 +430,13 @@ public partial class MainWindow : Window
             }
             new BindingEditor(original.Profile, original.CanReplace, SaveAndApply) { Owner = this }.ShowDialog();
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError("Couldn't open input mappings.", ex.ToString()); }
     }
 
     private async void ProfileChanged(object sender, SelectionChangedEventArgs e)
     {
         if (syncing || !initialized || ProfilePicker.SelectedItem is not ProfileChoice selected) return;
-        await RunAction("Applying profile…", () => ApplyProfile(selected.Name));
+        await RunAction("Applying profile…", "Couldn't apply the profile.", () => ApplyProfile(selected.Name));
     }
 
     private async Task ApplyProfile(string name)
@@ -468,7 +456,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog { Title = "Import controller profile", Filter = "JSON profiles (*.json)|*.json|All files (*.*)|*.*" };
         if (dialog.ShowDialog(this) != true) return;
-        await RunAction("Importing profile…", () => ImportProfileFrom(dialog.FileName));
+        await RunAction("Importing profile…", "Couldn't complete the profile import.", () => ImportProfileFrom(dialog.FileName));
     }
 
     private async Task ImportProfileFrom(string path)
@@ -487,8 +475,7 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException($"Imported “{imported.Name}”. Could not select it. {ex.Message}", ex);
             }
         }
-        savedMessage = $"Imported “{imported.Name}” for {imported.Bindings.Layout.DisplayName}.";
-        savedMessageUntil = Environment.TickCount64 + 7000;
+        ShowSuccess("Profile imported.");
     }
 
     private async void DeleteProfile(object sender, RoutedEventArgs e)
@@ -500,13 +487,12 @@ public partial class MainWindow : Window
             $"Delete “{name}” from your profiles? A backup will be kept.\n\nIf the profile is in use, the converter will switch to “{fallback}” on the same XInput slot.",
             "Delete profile", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         if (answer != MessageBoxResult.Yes) return;
-        await RunAction("Deleting profile…", async () =>
+        await RunAction("Deleting profile…", "Couldn't finish deleting the profile.", async () =>
         {
             string? active = await engine.DeleteProfileAsync(selected, lifetime.Token);
             LoadProfiles(active ?? fallback);
-            preferences.SaveProfile(chosenProfile!, layout.Id);
-            savedMessage = $"Deleted “{name}”. Selected profile: {chosenProfile}.";
-            savedMessageUntil = Environment.TickCount64 + 7000;
+            TrySavePreference(() => preferences.SaveProfile(chosenProfile!, layout.Id));
+            ShowSuccess("Profile deleted.");
         });
     }
 
@@ -515,7 +501,8 @@ public partial class MainWindow : Window
         bool stop = frame != null;
         var selected = chosenProfile;
         var device = DevicePicker.SelectedItem as DeviceChoice;
-        await RunAction(stop ? "Releasing the virtual controller…" : "Starting HIDMaestro. Approve the Windows prompt if shown.", async () =>
+        await RunAction(stop ? "Stopping conversion…" : "Starting conversion. Approve the Windows prompt if shown.",
+            stop ? "Couldn't stop conversion." : "Couldn't start conversion.", async () =>
         {
             if (stop) await engine.StopAsync(lifetime.Token);
             else if (selected != null && device != null)
@@ -529,13 +516,14 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task RunAction(string message, Func<Task> action)
+    private async Task RunAction(string message, string failure, Func<Task> action)
     {
         if (busy || exiting) return;
         busy = true;
-        savedMessageUntil = 0;
-        ShowError(null);
-        SetWork(message);
+        statusSuccess = null;
+        pollProblem = null;
+        SetStatusIssue(null);
+        SetStatusContext(message);
         PowerButton.IsEnabled = ProfilePicker.IsEnabled = DevicePicker.IsEnabled = ImportButton.IsEnabled =
             EditButton.IsEnabled = DeleteButton.IsEnabled = false;
         UpdateControllerWorkspace();
@@ -547,13 +535,17 @@ public partial class MainWindow : Window
             await ReadSession();
         }
         catch (OperationCanceledException) when (exiting) { }
+        catch (DriverApprovalCanceledException)
+        {
+            ShowWarning("Windows approval was canceled. Start conversion again.");
+        }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            ShowError(failure, ex.ToString());
             try { await ReadSession(); }
             catch { statusKnown = false; frame = null; }
             try { LoadProfiles(frame?.Profile ?? chosenProfile); }
-            catch (Exception listError) { ShowError($"{ex.Message} {listError.Message}"); }
+            catch (Exception listError) { ShowError(failure, $"{ex}{Environment.NewLine}{Environment.NewLine}{listError}"); }
         }
         finally
         {
@@ -586,21 +578,4 @@ public partial class MainWindow : Window
         finally { sessionLock.Release(); }
     }
 
-    private void ShowError(string? message)
-    {
-        ErrorText.Text = message ?? "";
-        ErrorText.Visibility = message == null ? Visibility.Collapsed : Visibility.Visible;
-        UpdateStatusBar();
-    }
-
-    private void SetWork(string? message, bool attention = false)
-    {
-        WorkMessage.Text = message ?? "";
-        WorkMessage.Foreground = (Brush)FindResource(attention ? "Warning" : "PrimaryText");
-        WorkMessage.Visibility = message == null ? Visibility.Collapsed : Visibility.Visible;
-        UpdateStatusBar();
-    }
-
-    private void UpdateStatusBar() => StatusBar.Visibility =
-        WorkMessage.Visibility == Visibility.Visible || ErrorText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
 }

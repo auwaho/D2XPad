@@ -159,6 +159,7 @@ internal sealed class EngineClient : IDisposable
                 if (child.Exit.IsCompleted)
                 {
                     var exit = await child.Exit.ConfigureAwait(false);
+                    if (exit.Code == DriverApprovalCanceledException.DesktopExitCode) throw new DriverApprovalCanceledException();
                     throw new InvalidOperationException(exit.Error.Length == 0 ? "The converter closed before it was ready." : exit.Error);
                 }
                 await Task.Delay(100, deadline.Token).ConfigureAwait(false);

@@ -38,6 +38,9 @@ foreach ($file in 'D2XPad.exe', 'D2XPad.Live.exe') {
     }
 }
 
+Get-ChildItem -LiteralPath $stage -Recurse -File -Filter '*.pdb' | ForEach-Object {
+    Remove-Item -LiteralPath $_.FullName
+}
 Copy-Item -LiteralPath $license -Destination (Join-Path $stage 'LICENSE')
 $null = [IO.Directory]::CreateDirectory((Join-Path $stage 'profiles'))
 @'

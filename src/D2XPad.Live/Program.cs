@@ -243,6 +243,11 @@ internal static class Program
             }
             finally { listener.Unregister(null); if (!desktop) Console.CancelKeyPress -= cancel; }
         }
+        catch (DriverApprovalCanceledException ex) when (args.Contains("--desktop", StringComparer.Ordinal))
+        {
+            Console.Error.WriteLine("D2XPad: " + ex.Message);
+            return DriverApprovalCanceledException.DesktopExitCode;
+        }
         catch (Exception ex) { Console.Error.WriteLine("D2XPad: " + ex.Message); return 2; }
     }
 

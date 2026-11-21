@@ -267,6 +267,16 @@
                   </StackPanel>
                 </Border>
               </Grid>
+              <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                  <TextBlock Text="Conversion service" Style="{StaticResource CardTitle}"/>
+                  <TextBlock x:Name="ConversionServiceStatusText" AutomationProperties.AutomationId="ConversionServiceStatusText"
+                             Style="{StaticResource FieldCaption}" TextWrapping="Wrap" Margin="0,3,0,10"/>
+                  <Button x:Name="InstallConversionServiceButton" AutomationProperties.AutomationId="InstallConversionServiceButton"
+                          HorizontalAlignment="Left" Style="{StaticResource ActionButton}"
+                          Content="Install service" Click="ChangeConversionService" IsEnabled="False"/>
+                </StackPanel>
+              </Border>
             </StackPanel>
           </ScrollViewer>
         </TabItem>

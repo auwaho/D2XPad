@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Principal;
@@ -13,15 +14,17 @@ internal static class RumbleFeedback
 {
     internal static string PipeName(string session) => "D2XPad.Live.Rumble." + session;
 
-    internal static NamedPipeServerStream? OpenListener(string session, out string? error)
+    internal static NamedPipeServerStream? OpenListener(string session, out string? error, SecurityIdentifier? owner = null)
     {
         error = null;
         try
         {
-            return new(PipeName(session), PipeDirection.In, 1, PipeTransmissionMode.Byte,
-                PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous);
+            return owner == null
+                ? new(PipeName(session), PipeDirection.In, 1, PipeTransmissionMode.Byte,
+                    PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous)
+                : ConversionServicePipes.OpenListener(PipeName(session), owner, PipeDirection.In);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception)
         {
             error = $"Could not open the vibration channel. Restart the converter to retry. {ex.Message}";
             Console.Error.WriteLine(error);
@@ -30,13 +33,14 @@ internal static class RumbleFeedback
     }
 
     internal static async Task ReceiveAsync(NamedPipeServerStream listener, Action<byte, byte, long> deliver,
-        Action<string> reportFailure, CancellationToken token)
+        Action<string> reportFailure, CancellationToken token, uint? host = null)
     {
         try
         {
             using var connect = CancellationTokenSource.CreateLinkedTokenSource(token);
             connect.CancelAfter(TimeSpan.FromSeconds(15));
             await listener.WaitForConnectionAsync(connect.Token);
+            if (host is uint process) ConversionServicePipes.VerifyClient(listener, process);
             byte[] packet = new byte[10];
             while (true)
             {
@@ -80,13 +84,15 @@ internal static class RumbleFeedback
         SingleReader = true
     });
 
-    internal static async Task SendAsync(string session, ChannelReader<Levels> queue, CancellationToken token)
+    internal static async Task SendAsync(string session, ChannelReader<Levels> queue, CancellationToken token,
+        uint? expectedListener = null)
     {
         try
         {
             using var client = new NamedPipeClientStream(".", PipeName(session), PipeDirection.Out,
                 PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
             await client.ConnectAsync(15000, token);
+            if (expectedListener is uint process) ConversionServicePipes.VerifyServer(client, process);
             byte[] frame = new byte[10];
             await foreach (var value in queue.ReadAllAsync(token))
             {

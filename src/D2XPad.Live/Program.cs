@@ -15,6 +15,7 @@ internal static class Program
         CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
         try
         {
+            if (args is ["--conversion-service", var ownerSid]) return ConversionService.Run(ownerSid);
             if (args is ["--driver-host", var session]) return await LiveOutput.RunHostAsync(session);
             if (args is ["--driver-host", var feedbackSession, "--rumble"])
                 return await LiveOutput.RunHostAsync(feedbackSession, enableRumble: true);
@@ -23,8 +24,8 @@ internal static class Program
             {
                 Console.WriteLine("""
                     D2XPad · DirectInput to XInput Converter
-                    D2XPad.Live [play] [--profile NAME-OR-FILE | --bindings FILE] [--device N | --device-path PATH] [--vibration]
-                    D2XPad.Live check [--profile NAME-OR-FILE | --bindings FILE] [--device N] [--resume PRIOR-LIVE-REPORT] [--keep-playing]
+                    D2XPad.Live [play] [--profile NAME-OR-FILE | --bindings FILE] [--device N | --device-path PATH] [--vibration] [--output auto|portable|service]
+                    D2XPad.Live check [--profile NAME-OR-FILE | --bindings FILE] [--device N] [--resume PRIOR-LIVE-REPORT] [--keep-playing] [--output auto|portable|service]
                     D2XPad.Live check-capture FILE
                     D2XPad.Live profiles
                     D2XPad.Live import FILE [NAME]
@@ -85,6 +86,7 @@ internal static class Program
                     string connection = !status.Connected ? "waiting for the selected controller to reconnect"
                         : status.WaitingForNeutral ? "connected, release all controls" : "connected";
                     Console.WriteLine($"Profile {status.Profile} · {connection} · XInput slot {status.Slot}");
+                    if (status.OutputMode != null) Console.WriteLine($"Virtual output: {status.OutputMode}.");
                     Console.WriteLine($"Physical reports: {status.Received}. Disconnects: {status.Disconnects}. Reconnects: {status.Reconnects}.");
                     if (status.VibrationEnabled)
                     {
@@ -118,6 +120,7 @@ internal static class Program
             bool desktop = false;
             bool keepPlaying = false;
             bool vibration = false;
+            LiveOutputMode? outputMode = null;
             if (command == "check-capture")
             {
                 if (args.Length != 2) throw new ArgumentException("Use check-capture FILE with a labeled Stage 1A recording.");
@@ -141,6 +144,15 @@ internal static class Program
                         resume = Path.GetFullPath(args[++i]); break;
                     case "--keep-playing" when command == "check": keepPlaying = true; break;
                     case "--vibration" when command == "play": vibration = true; break;
+                    case "--output" when outputMode == null && i + 1 < args.Length:
+                        outputMode = args[++i] switch
+                        {
+                            "auto" => LiveOutputMode.Auto,
+                            "portable" => LiveOutputMode.Portable,
+                            "service" => LiveOutputMode.Service,
+                            _ => throw new ArgumentException("Choose auto, portable or service for --output.")
+                        };
+                        break;
                     default: throw new ArgumentException("Invalid option. Use --help.");
                 }
             }
@@ -192,8 +204,8 @@ internal static class Program
                 int? slot = null;
                 try
                 {
-                    Console.WriteLine("Starting the HIDMaestro Xbox Series X|S driver host. Approve the Windows prompt if it appears.");
-                    await using var output = await LiveOutput.ConnectAsync(stop.Token, enableRumble: rumble);
+                    await using var output = await LiveOutput.ConnectAsync(stop.Token, enableRumble: rumble,
+                        mode: outputMode ?? LiveOutputMode.Auto);
                     slot = await XInputSlotCheck.IdentifyAsync(output.Submit, XInputReader.ReadAll, Random.Shared,
                         TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(1), stop.Token);
                     Console.WriteLine($"Xbox Series X|S connected to XInput slot {slot}.");
@@ -269,7 +281,7 @@ internal static class Program
     internal static async Task PlayAsync(PhysicalFeed feed, LiveOutput output, int slot, ProfileCatalog catalog,
         ProfileSelection selection, CancellationToken token)
     {
-        await using var controls = new SessionControl(feed, slot, catalog, selection);
+        await using var controls = new SessionControl(feed, slot, catalog, selection, output.OutputMode);
         Console.WriteLine($"Live {feed.Layout.Transport} input is active with profile {selection.Selector}. Use switch NAME to change profiles or stop to exit.");
         var running = Task.WhenAny(feed.Failure, output.Completion, controls.Completion, Task.Delay(Timeout.Infinite, token));
         try

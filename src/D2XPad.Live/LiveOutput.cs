@@ -19,9 +19,9 @@ internal sealed class LiveOutput : IAsyncDisposable
 {
     private const string Prefix = "D2XPad.Live.";
     private const byte Frame = 1, Stop = 2, Ping = 3;
-    private readonly NamedPipeServerStream pipe;
+    private readonly PipeStream pipe;
     private readonly StreamReader replies;
-    private readonly Process host;
+    private readonly Process? host;
     private readonly record struct Packet(LiveState State, ulong Enqueued, TaskCompletionSource? PowerAck = null);
     private readonly Channel<Packet> pending = Channel.CreateBounded<Packet>(64);
     private readonly object gate = new();
@@ -29,25 +29,26 @@ internal sealed class LiveOutput : IAsyncDisposable
     private volatile bool stopping;
     private string? rumbleFeedbackProblem;
 
-    internal LiveOutput(NamedPipeServerStream pipe, StreamReader replies, Process host, NamedPipeServerStream? feedback = null,
-        string? feedbackProblem = null)
+    internal LiveOutput(PipeStream pipe, StreamReader replies, Process? host, NamedPipeServerStream? feedback = null,
+        string? feedbackProblem = null, uint? feedbackHost = null)
     {
         this.pipe = pipe;
         this.replies = replies;
         this.host = host;
         rumbleFeedbackProblem = feedbackProblem;
-        Completion = RunAsync(feedback);
+        Completion = RunAsync(feedback, feedbackHost);
     }
 
     public Task Completion { get; }
+    public string OutputMode => host == null ? "service" : "portable";
     public event Action<byte, byte, long>? RumbleChanged;
     public string? RumbleFeedbackProblem => Volatile.Read(ref rumbleFeedbackProblem);
 
-    private async Task RunAsync(NamedPipeServerStream? feedback)
+    private async Task RunAsync(NamedPipeServerStream? feedback, uint? feedbackHost)
     {
         using var stopFeedback = new CancellationTokenSource();
         var receive = feedback == null ? Task.CompletedTask :
-            RumbleFeedback.ReceiveAsync(feedback, NotifyRumble, ReportFeedbackFailure, stopFeedback.Token);
+            RumbleFeedback.ReceiveAsync(feedback, NotifyRumble, ReportFeedbackFailure, stopFeedback.Token, feedbackHost);
         try { await PumpAsync(); }
         finally
         {
@@ -75,9 +76,57 @@ internal sealed class LiveOutput : IAsyncDisposable
         catch (Exception ex) { Console.Error.WriteLine($"Could not apply rumble feedback: {ex.Message}"); }
     }
 
-    public static async Task<LiveOutput> ConnectAsync(CancellationToken token, bool enableRumble = false)
+    public static Task<LiveOutput> ConnectAsync(CancellationToken token, bool enableRumble = false,
+        LiveOutputMode mode = LiveOutputMode.Auto)
     {
         token.ThrowIfCancellationRequested();
+        if (mode == LiveOutputMode.Portable) return ConnectPortableAsync(token, enableRumble);
+        var status = ConversionService.ReadStatus(out uint processId);
+        if (status == ConversionServiceStatus.Running) return ConnectServiceAsync(processId, token, enableRumble);
+        if (status == ConversionServiceStatus.Missing && mode == LiveOutputMode.Auto)
+            return ConnectPortableAsync(token, enableRumble);
+        throw new IOException(status switch
+        {
+            ConversionServiceStatus.Missing => "Install the conversion service before selecting service output.",
+            ConversionServiceStatus.Starting => "The conversion service is starting. Try Start conversion again.",
+            _ => "The conversion service is unavailable. Check its status in Settings."
+        });
+    }
+
+    private static async Task<LiveOutput> ConnectServiceAsync(uint processId, CancellationToken token, bool enableRumble)
+    {
+        Console.WriteLine("Using the Windows conversion service for Xbox Series X|S output.");
+        using var identity = WindowsIdentity.GetCurrent();
+        var owner = identity.User ?? throw new UnauthorizedAccessException("Could not identify this Windows account.");
+        var session = Guid.NewGuid();
+        var pipe = ConversionServicePipes.OpenServiceConnection(owner);
+        StreamReader? replies = null;
+        string? feedbackProblem = null;
+        var feedback = enableRumble ? RumbleFeedback.OpenListener(session.ToString("N"), out feedbackProblem, owner) : null;
+        try
+        {
+            await pipe.ConnectAsync(5000, token);
+            ConversionServicePipes.VerifyServer(pipe, processId);
+            var request = new byte[ConversionService.RequestSize];
+            request[0] = feedback == null ? (byte)0 : (byte)1;
+            session.TryWriteBytes(request.AsSpan(1));
+            await pipe.WriteAsync(request, token);
+            replies = new StreamReader(pipe, leaveOpen: true);
+            await ExpectAsync(replies, "READY", TimeSpan.FromSeconds(100), token);
+            return new LiveOutput(pipe, replies, null, feedback, feedbackProblem, processId);
+        }
+        catch
+        {
+            replies?.Dispose();
+            pipe.Dispose();
+            feedback?.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<LiveOutput> ConnectPortableAsync(CancellationToken token, bool enableRumble)
+    {
+        Console.WriteLine("Using the portable Xbox Series X|S driver host. Approve the Windows prompt if it appears.");
         string session = Guid.NewGuid().ToString("N");
         var pipe = new NamedPipeServerStream(Prefix + session, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -206,7 +255,7 @@ internal sealed class LiveOutput : IAsyncDisposable
             }
             pipe.Dispose();
             replies.Dispose();
-            host.Dispose();
+            host?.Dispose();
         }
     }
 
@@ -243,29 +292,42 @@ internal sealed class LiveOutput : IAsyncDisposable
         using var pipe = new NamedPipeClientStream(".", Prefix + session, PipeDirection.InOut,
             PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);
         await pipe.ConnectAsync(15000);
+        return await ServeHostAsync(pipe, session, enableRumble, CancellationToken.None);
+    }
+
+    internal static async Task<int> ServeHostAsync(PipeStream pipe, string session, bool enableRumble,
+        CancellationToken token, uint? feedbackListener = null)
+    {
         using var replies = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         try
         {
             using (var controller = new SeriesController())
             {
-                bool stopped = enableRumble ? await ServeWithFeedbackAsync(session, controller, pipe, replies)
-                    : await ServeControllerAsync(controller, pipe, replies);
+                bool stopped = enableRumble ? await ServeWithFeedbackAsync(session, controller, pipe, replies, token, feedbackListener)
+                    : await ServeControllerAsync(controller, pipe, replies, token);
                 if (!stopped) return 0;
             }
-            await replies.WriteLineAsync("CLOSED");
+            await replies.WriteLineAsync("CLOSED".AsMemory(), token);
             return 0;
         }
         catch (Exception ex)
         {
-            try { await replies.WriteLineAsync("ERROR " + ex.GetBaseException().Message.ReplaceLineEndings(" ")); }
-            catch (IOException) { }
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(1));
+            try
+            {
+                await replies.WriteLineAsync(("ERROR " + ex.GetBaseException().Message.ReplaceLineEndings(" ")).AsMemory(),
+                    deadline.Token);
+            }
+            catch (Exception failure) when (failure is IOException or OperationCanceledException) { }
             return 1;
         }
     }
 
-    private static async Task<bool> ServeWithFeedbackAsync(string session, SeriesController controller, NamedPipeClientStream pipe, StreamWriter replies)
+    private static async Task<bool> ServeWithFeedbackAsync(string session, SeriesController controller, PipeStream pipe,
+        StreamWriter replies, CancellationToken token, uint? feedbackListener)
     {
-        using var stop = new CancellationTokenSource();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var queue = RumbleFeedback.Latest();
         void OnOutput(HMController _, HMOutputPacket packet)
         {
@@ -273,8 +335,8 @@ internal sealed class LiveOutput : IAsyncDisposable
                 queue.Writer.TryWrite(levels);
         }
         controller.OutputReceived += OnOutput;
-        var send = RumbleFeedback.SendAsync(session, queue.Reader, stop.Token);
-        try { return await ServeControllerAsync(controller, pipe, replies); }
+        var send = RumbleFeedback.SendAsync(session, queue.Reader, stop.Token, feedbackListener);
+        try { return await ServeControllerAsync(controller, pipe, replies, token); }
         finally
         {
             controller.OutputReceived -= OnOutput;
@@ -284,14 +346,16 @@ internal sealed class LiveOutput : IAsyncDisposable
         }
     }
 
-    private static async Task<bool> ServeControllerAsync(SeriesController controller, NamedPipeClientStream pipe, StreamWriter replies)
+    private static async Task<bool> ServeControllerAsync(SeriesController controller, PipeStream pipe, StreamWriter replies,
+        CancellationToken token)
     {
-        await replies.WriteLineAsync("READY");
+        await replies.WriteLineAsync("READY".AsMemory(), token);
         var opcode = new byte[1];
         var payload = new byte[LiveState.WireSize];
         while (true)
         {
-            using var watchdog = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            using var watchdog = CancellationTokenSource.CreateLinkedTokenSource(token);
+            watchdog.CancelAfter(TimeSpan.FromSeconds(12));
             if (await pipe.ReadAsync(opcode, watchdog.Token) == 0) return false;
             if (opcode[0] == Stop) return true;
             if (opcode[0] == Frame)
@@ -303,7 +367,7 @@ internal sealed class LiveOutput : IAsyncDisposable
             }
             else if (opcode[0] != Ping)
                 throw new InvalidDataException("Unknown driver-host command.");
-            await replies.WriteLineAsync("OK");
+            await replies.WriteLineAsync("OK".AsMemory(), watchdog.Token);
         }
     }
 

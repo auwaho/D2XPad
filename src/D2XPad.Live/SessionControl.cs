@@ -26,7 +26,7 @@ internal sealed record SessionStatus(string SessionId, int Slot, string Profile,
     LiveState? LastSuspendedState, DateTimeOffset? LastSuspendUtc, DateTimeOffset? LastResumeUtc,
     long ReceivedAtResume, SuspendDetachEvidence? LastSuspendDetach, LiveState? Physical = null, string? DevicePath = null,
     int ProcessId = 0, long ProfileRevision = 0, string? LayoutId = null,
-    bool VibrationEnabled = false, string? VibrationProblem = null, long VibrationEffects = 0);
+    bool VibrationEnabled = false, string? VibrationProblem = null, long VibrationEffects = 0, string? OutputMode = null);
 
 // This pipe belongs to the standard-user converter. The elevated driver host accepts only gamepad states.
 internal sealed class SessionControl : IAsyncDisposable
@@ -40,6 +40,7 @@ internal sealed class SessionControl : IAsyncDisposable
     private readonly PhysicalFeed feed;
     private readonly ProfileCatalog catalog;
     private readonly int slot;
+    private readonly string outputMode;
     private ProfileSelection active;
     private long profileRevision;
     public Task Completion { get; }
@@ -51,11 +52,12 @@ internal sealed class SessionControl : IAsyncDisposable
         return $"D2XPad.Control.{identity.User!.Value}.{process.SessionId}";
     }
 
-    public SessionControl(PhysicalFeed feed, int slot, ProfileCatalog catalog, ProfileSelection profile)
+    public SessionControl(PhysicalFeed feed, int slot, ProfileCatalog catalog, ProfileSelection profile, string outputMode)
     {
         this.feed = feed;
         this.slot = slot;
         this.catalog = catalog;
+        this.outputMode = outputMode;
         active = profile;
         Completion = ServeAsync(stop.Token);
     }
@@ -70,7 +72,7 @@ internal sealed class SessionControl : IAsyncDisposable
             state.Generation, state.Latest?.Extras ?? ExtraButtons.None, state.Suspended, state.Suspends, state.Resumes,
             state.LastSuspendedState, state.LastSuspendUtc, state.LastResumeUtc, state.ReceivedAtResume, state.LastSuspendDetach,
             physical, state.DevicePath, Environment.ProcessId, profileRevision, feed.Layout.Id,
-            feed.VibrationEnabled, feed.VibrationProblem, feed.VibrationEffects);
+            feed.VibrationEnabled, feed.VibrationProblem, feed.VibrationEffects, outputMode);
     }
 
     private void UseProfile(ProfileSelection next)

@@ -40,7 +40,10 @@ public partial class MainWindow
     private void UpdateControllerWorkspace(string? selectedId = null)
     {
         if (WorkspaceTabs.SelectedItem == SettingsTab)
+        {
             SettingsController.Text = DeviceTitle.Text;
+            UpdateConversionServiceSettings();
+        }
         if (WorkspaceTabs.SelectedItem != ControllersTab) return;
 
         string currentLayout = frame?.LayoutId ?? (DevicePicker.SelectedItem as DeviceChoice)?.LayoutId ?? layout.Id;

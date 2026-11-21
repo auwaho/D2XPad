@@ -501,7 +501,11 @@ public partial class MainWindow : Window
         bool stop = frame != null;
         var selected = chosenProfile;
         var device = DevicePicker.SelectedItem as DeviceChoice;
-        await RunAction(stop ? "Stopping conversion…" : "Starting conversion. Approve the Windows prompt if shown.",
+        string progress = stop ? "Stopping conversion…"
+            : ConversionService.Status() == ConversionServiceStatus.Missing
+                ? "Starting conversion. Approve the Windows prompt if shown."
+                : "Starting conversion…";
+        await RunAction(progress,
             stop ? "Couldn't stop conversion." : "Couldn't start conversion.", async () =>
         {
             if (stop) await engine.StopAsync(lifetime.Token);

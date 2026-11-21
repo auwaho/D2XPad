@@ -22,6 +22,10 @@ flowchart LR
 
 The standard-user converter maintains physical Raw Input and controller state. An elevated HIDMaestro host installs the bundled driver when needed and owns the virtual device. It uses the `xbox-series-xs-bt` profile with independent triggers. A short trigger sequence confirms which XInput slot follows the virtual controller before forwarding physical input. The build pins the SHA-256 of the official HIDMaestro release archive. [HIDMaestro 2.3.0 SDK](https://github.com/hifihedgehog/HIDMaestro/releases/tag/v2.3.0)
 
+By default, the portable package starts that host with Windows elevation for each conversion. Installing the optional **D2XPad Conversion Service** registers an automatic `LocalSystem` service and copies its host and SDK to a protected directory under Program Files. The converter sends Xbox reports through local named pipes. The service restricts access to the installing account in the active Windows session, and the converter verifies the service's process identity before sending reports. Raw Input, calibration, mappings and the physical vibration worker stay in the signed-in user's process.
+
+The service owns one virtual output at a time. Closing the connection or stopping the session releases that output, and the host also has an inactivity timeout. An installed but unavailable service produces an error so the user can diagnose the service state. Removing the optional service restores portable startup.
+
 A compatible profile switch resets Xbox output to neutral on the existing slot. Disconnect and Windows suspend also neutralize output. Once the same physical device is available and its inputs return to rest, the session can resume on the existing virtual controller. Stopping conversion releases that controller.
 
 ## Vibration
@@ -38,7 +42,7 @@ The Bluetooth 85HF layout and its presets ship with the app. Saved profiles live
 
 On Windows x64 with the .NET 10 SDK, run `.\scripts\Build-Desktop.ps1` in PowerShell from the repository root. The build verifies the bundled HIDMaestro dependency and publishes the desktop package to `artifacts/Desktop`. [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
-Release builds use the tag as the version source. Pushing a tag such as `v1.2.3` for a commit on `main` builds `D2XPad-v1.2.3-win-x64.zip` and its SHA-256 checksum. Both executables report product version `1.2.3` and file version `1.2.3.0`. Prerelease suffixes appear in the ZIP name and product version.
+Release builds use the tag as the version source. Pushing a tag such as `v1.2.3` for a commit on `main` builds `D2XPad-v1.2.3-win-x64.zip` and its SHA-256 checksum. The desktop, converter and service setup executables report product version `1.2.3` and file version `1.2.3.0`. Prerelease suffixes appear in the ZIP name and product version.
 
 ### Controller diagnostics
 

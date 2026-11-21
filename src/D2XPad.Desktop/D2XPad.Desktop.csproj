@@ -23,6 +23,8 @@
     <Resource Include="Assets/D2X.ico" />
     <Resource Include="Assets/D2X-stopped.ico" />
     <Resource Include="Assets/D2X-header.png" />
+    <AssemblyMetadata Include="D2XPad.ServiceSetup.SHA256" Value="$(D2XPadServiceSetupSha256)"
+                      Condition="'$(D2XPadServiceSetupSha256)' != ''" />
     <ProjectReference Include="../D2XPad.Live/D2XPad.Live.csproj" />
     <InternalsVisibleTo Include="CalibrationWizardChecks" />
   </ItemGroup>

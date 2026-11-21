@@ -9,6 +9,9 @@ internal sealed class PhysicalFeed : IDisposable
     private readonly TaskCompletionSource failure = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly PhysicalSession session;
     private readonly LiveOutput output;
+#if D2XPAD_LATENCY_PROBE
+    private readonly PhysicalLatencyProbe? latencyProbe;
+#endif
     private readonly PhysicalRumbleSink? motors;
     private readonly object motorGate = new();
     private HidCollection? motorDevice;
@@ -48,7 +51,14 @@ internal sealed class PhysicalFeed : IDisposable
     public PhysicalFeed(HidCollection device, PadBindings bindings, LiveOutput output, bool vibrationEnabled = false)
     {
         this.output = output;
+#if D2XPAD_LATENCY_PROBE
+        latencyProbe = PhysicalLatencyProbe.Start(bindings.Layout.Id);
+        session = new(device, bindings, SubmitMeasured, output.ResetForPowerTransition);
+        Action<HidCollection, byte[]> receive = ReceiveMeasured;
+#else
         session = new(device, bindings, output.Submit, output.ResetForPowerTransition);
+        Action<HidCollection, byte[]> receive = session.Report;
+#endif
         if (RumbleSurvey.Supports(device))
         {
             motorDevice = device;
@@ -58,7 +68,7 @@ internal sealed class PhysicalFeed : IDisposable
         try
         {
             SetVibration(vibrationEnabled);
-            input = new RawInput([device], session.Report, reason =>
+            input = new RawInput([device], receive, reason =>
             {
                 SetMotorDevice(null);
                 try { session.Stop(); }
@@ -68,10 +78,34 @@ internal sealed class PhysicalFeed : IDisposable
         }
         catch
         {
+#if D2XPAD_LATENCY_PROBE
+            latencyProbe?.Dispose();
+#endif
             DisposeMotors();
             throw;
         }
     }
+
+#if D2XPAD_LATENCY_PROBE
+    private void ReceiveMeasured(HidCollection device, byte[] report)
+    {
+        if (latencyProbe == null)
+        {
+            session.Report(device, report);
+            return;
+        }
+        long received = Stopwatch.GetTimestamp();
+        PhysicalLatencyProbe.RawReportTimestamp = received;
+        try { session.Report(device, report); }
+        finally { PhysicalLatencyProbe.RawReportTimestamp = 0; }
+    }
+
+    private void SubmitMeasured(LiveState state)
+    {
+        latencyProbe?.Submitted(state);
+        output.Submit(state);
+    }
+#endif
 
     public void SetVibration(bool enabled)
     {
@@ -147,6 +181,9 @@ internal sealed class PhysicalFeed : IDisposable
 
     public void Dispose()
     {
+#if D2XPAD_LATENCY_PROBE
+        latencyProbe?.Dispose();
+#endif
         SetVibration(false);
         SetMotorDevice(null);
         try { input.Dispose(); }

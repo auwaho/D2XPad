@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/D2XPad.Live/LiveOutput.cs;../../src/D2XPad.Live/RumbleFeedback.cs;../../src/D2XPad.Live/LiveState.cs;../../src/D2XPad.Live/DeviceLayout.cs;../../src/Shared/SeriesController.cs" />
+    <Compile Include="../../src/D2XPad.Live/ConversionService.cs;../../src/D2XPad.Live/ConversionServicePipes.cs" />
     <Reference Include="HIDMaestro.Core" HintPath="../../artifacts/deps/HIDMaestro-2.3.0/HIDMaestro.Core.dll" />
     <Compile Include="../../src/D2XPad.Live/CalibratedLayout.cs;../../src/D2XPad.Live/LayoutStore.cs;../../src/D2XPad.Live/ControllerCalibration.cs" />
     <Compile Include="../../src/D2XPad.Capture/RawInput.cs" />

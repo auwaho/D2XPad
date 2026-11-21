@@ -20,6 +20,12 @@ In **Settings → App**, **Start with Windows** launches D2XPad when you sign in
 
 If you move the portable app, turn on **Start with Windows** again from the new location to update the startup path.
 
+## Start conversion without repeated Windows approval
+
+With conversion stopped, open **Settings → Conversion service → Install service** and approve the Windows prompt. The optional Windows service starts automatically after a restart. **Start conversion** still starts each conversion on demand, and uses the running service without another approval prompt. The service is available to the Windows account that installed it.
+
+Use **Remove service** in the same section to uninstall it. Windows requests approval for removal. Subsequent conversions use the portable driver host and can prompt for approval again. To update the service, remove it and then install it from the new D2XPad package.
+
 ## Built-in 85HF profiles
 
 A fresh install selects `default` for the Bluetooth 85HF and also includes `southpaw-buttons`. Standard inputs pass through in both profiles.

@@ -23,4 +23,10 @@
     <None Include="$(SdkDir)/LICENSE;$(SdkDir)/THIRD-PARTY-NOTICES.txt" Link="HIDMaestro/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="live-gamepad.html" LogicalName="D2XPad.SeriesProbe.gamepad.html" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(MeasureLiveLatency)' == 'true'">
+    <DefineConstants>$(DefineConstants);D2XPAD_LATENCY_PROBE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(MeasureLiveLatency)' == 'true'">
+    <Compile Include="../../tests/ServiceOutput/PhysicalLatencyProbe.cs" Link="Diagnostics/PhysicalLatencyProbe.cs" />
+  </ItemGroup>
 </Project>

@@ -40,6 +40,7 @@ internal static class Program
             CheckPreferences(settings);
             Run();
             AssignmentDraftChecks.Run();
+            ProfileEditorChecks.Run(dir);
             ProfileSelectionChecks.Run(dir);
             MappingLayoutChecks.Run();
             DesktopReliabilityChecks.Run(settings, Path.Combine(dir, "layouts"));

@@ -13,7 +13,7 @@ internal static class MappingLayoutChecks
     {
         CheckViewport(1.25, new Size(1000, 650));
         CheckViewport(1.50, new Size(960, 600));
-        Console.WriteLine("Input mappings passed the 125% and 150% viewport checks for independent scrolling, pinned save controls and the Strength slider.");
+        Console.WriteLine("Profile editor passed the 125% and 150% viewport checks for the compact header, square stick previews, independent mapping scrolling and pinned save controls.");
     }
 
     private static void CheckViewport(double scale, Size pixels)
@@ -22,7 +22,7 @@ internal static class MappingLayoutChecks
             .Select(target => new XboxAction(target.Id, target.Id == "LT" ? 92 : 50)).ToArray();
         var profile = new ControllerProfile("Viewport fixture", PadBindings.CreateMappings(DeviceLayout.Bluetooth85HF,
             [new(PadBindings.ExtraId("PL"), actions)]));
-        var editor = new BindingEditor(profile, false, (_, _, _) => Task.CompletedTask);
+        var editor = new ProfileEditor(profile, false, (_, _, _) => Task.CompletedTask);
         try
         {
             var pl = editor.InputList.Items.Cast<object>().Single(item => (string)item.GetType().GetProperty("Id")!.GetValue(item)! ==
@@ -36,18 +36,19 @@ internal static class MappingLayoutChecks
             root.Measure(viewport);
             root.Arrange(new Rect(viewport));
             root.UpdateLayout();
-            Expect(Math.Abs(VisualTreeHelper.GetDpi(editor.SaveMappings).DpiScaleY - scale) < 0.01, "DPI did not reach the editor controls.");
+            Expect(Math.Abs(VisualTreeHelper.GetDpi(editor.SaveProfile).DpiScaleY - scale) < 0.01, "DPI did not reach the editor controls.");
+            CheckHeader(editor, root, viewport.Width, $"{profile.Bindings.Layout.DisplayName}  ·  {profile.Name}");
 
             var left = Descendants(editor.InputList).OfType<ScrollViewer>().First();
             var right = editor.MappingScroll;
             double footer = Top(editor.EditorFooter, root);
-            double save = Top(editor.SaveMappings, root);
+            double save = Top(editor.SaveProfile, root);
             Expect(left.ScrollableHeight > 0 && right.ScrollableHeight > 0, "Both columns must be able to scroll.");
-            Expect(save >= footer && save + editor.SaveMappings.ActualHeight <= viewport.Height &&
+            Expect(save >= footer && save + editor.SaveProfile.ActualHeight <= viewport.Height &&
                 Top(editor.ProfileName, root) + editor.ProfileName.ActualHeight <= viewport.Height &&
                 Top(editor.CancelEditor, root) + editor.CancelEditor.ActualHeight <= viewport.Height,
                 "Profile name, save and cancel must fit in the viewport.");
-            Expect(Equals(editor.SaveMappings.Content, "Save copy and apply"), "The protected profile must show the copy action.");
+            Expect(Equals(editor.SaveProfile.Content, "Save copy and apply"), "The protected profile must show the copy action.");
 
             var placeholder = (TextBlock)editor.TargetPicker.Template.FindName("ValueText", editor.TargetPicker);
             Expect(editor.TargetPicker.SelectedIndex == -1 && placeholder.Text == "Select action..." && !editor.AddAction.IsEnabled,
@@ -72,9 +73,41 @@ internal static class MappingLayoutChecks
             right.ScrollToVerticalOffset(right.ScrollableHeight);
             root.UpdateLayout();
             Expect(right.VerticalOffset > 0 && left.VerticalOffset == leftOffset && Top(editor.EditorFooter, root) == footer &&
-                Top(editor.SaveMappings, root) == save, "Scrolling either pane must keep the footer and save controls fixed.");
+                Top(editor.SaveProfile, root) == save, "Scrolling either pane must keep the footer and save controls fixed.");
+
+            editor.ProfileTabs.SelectedItem = editor.SticksTab;
+            root.UpdateLayout();
+            CheckHeader(editor, root, viewport.Width, $"{profile.Bindings.Layout.DisplayName}  ·  {profile.Name}");
+            Expect(Top(editor.LeftDeadzone, root) >= Top(editor.SticksTab, root) + editor.SticksTab.ActualHeight &&
+                Top(editor.RightDeadzone, root) + editor.RightDeadzone.ActualHeight <= footer &&
+                editor.LeftDeadzone.ActualWidth > 0 && editor.RightDeadzone.ActualWidth > 0 &&
+                Top(editor.EditorFooter, root) == footer && Top(editor.SaveProfile, root) == save,
+                "Both deadzone sliders and the shared footer must fit after switching tabs.");
+            double sliderRight = editor.LeftDeadzone.TransformToAncestor(root).Transform(new Point(editor.LeftDeadzone.ActualWidth, 0)).X;
+            foreach (var preview in new[] { editor.LeftStickPreview, editor.RightStickPreview })
+            {
+                Point position = preview.TransformToAncestor(root).Transform(new Point());
+                Expect(preview.ActualWidth > 0 && Math.Abs(preview.ActualWidth - preview.ActualHeight) <= 1 &&
+                    position.X >= sliderRight - 1 && position.X + preview.ActualWidth <= viewport.Width &&
+                    position.Y + preview.ActualHeight <= footer,
+                    "Each stick preview must stay square, to the right of the ranges and above the footer.");
+            }
         }
         finally { editor.Close(); }
+    }
+
+    private static void CheckHeader(ProfileEditor editor, FrameworkElement root, double viewportWidth, string expectedCaption)
+    {
+        var caption = editor.ProfileTabs.Template.FindName("DeviceProfileCaption", editor.ProfileTabs) as TextBlock
+            ?? throw new InvalidDataException("The device and profile caption is missing from the tab header.");
+        Point captionOrigin = caption.TransformToAncestor(root).Transform(new Point());
+        Point lastTabEdge = editor.SticksTab.TransformToAncestor(root).Transform(new Point(editor.SticksTab.ActualWidth, 0));
+        Expect(caption.Text == expectedCaption && caption.ActualWidth > 0 && captionOrigin.X >= lastTabEdge.X - 1 &&
+            captionOrigin.X + caption.ActualWidth <= viewportWidth && captionOrigin.Y >= lastTabEdge.Y - 1 &&
+            captionOrigin.Y + caption.ActualHeight <= lastTabEdge.Y + editor.SticksTab.ActualHeight + 1,
+            "The device and profile caption must fit to the right of the tabs in the same header row.");
+        Expect(editor.Title == "Profile editor" && !Descendants(root).OfType<TextBlock>().Any(text => text.Text == editor.Title),
+            "The editor title must appear only in the native window title bar.");
     }
 
     private static double Top(FrameworkElement element, Visual root) =>

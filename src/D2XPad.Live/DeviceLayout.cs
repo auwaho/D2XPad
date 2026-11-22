@@ -27,7 +27,7 @@ internal abstract class DeviceLayout
     public abstract bool MatchesCollection(uint vendorId, uint productId, ushort usagePage, ushort usage);
     public abstract bool MatchesReports(string transport, int? reportLength, IReadOnlyList<byte>? reportIds);
     public abstract bool TryDecodePhysical(ReadOnlySpan<byte> report, out LiveState state, out ExtraButtons extras);
-    public abstract bool IsPhysicallyReleased(ReadOnlySpan<byte> report);
+    public abstract bool IsPhysicallyReleased(ReadOnlySpan<byte> report, StickDeadzones deadzones = default);
 }
 
 internal sealed class Bluetooth85HfLayout : DeviceLayout
@@ -80,15 +80,14 @@ internal sealed class Bluetooth85HfLayout : DeviceLayout
     }
 
     // Unassigned extra buttons still block the release gate. Ignore the two digital trigger mirrors.
-    public override bool IsPhysicallyReleased(ReadOnlySpan<byte> r) =>
+    public override bool IsPhysicallyReleased(ReadOnlySpan<byte> r, StickDeadzones deadzones = default) =>
         DigitalsReleased(r) && r[6] <= 2 && r[7] <= 2 &&
-        NearCenter(r[2]) && NearCenter(r[3]) && NearCenter(r[4]) && NearCenter(r[5]);
+        StickDeadzones.IsReleased(r[2], r[3], deadzones.Left, deadzones.LeftOuter) &&
+        StickDeadzones.IsReleased(r[4], r[5], deadzones.Right, deadzones.RightOuter);
 
     internal static bool DigitalsReleased(ReadOnlySpan<byte> r) =>
         r.Length == 32 && r[0] == 1 && (r[1] & 15) == 15 && r[8] == 0 &&
         (r[9] & 0x7c) == 0 && (r[10] & 3) == 0;
-
-    private static bool NearCenter(byte value) => Math.Abs(value - 128) <= 9;
 
     private static ushort[] MakeButtonTable(params ushort[] buttons)
     {

@@ -82,6 +82,7 @@ internal static class HotProfileTests
             Packet(Rest);
             Check(session.Connection is { Connected: true, WaitingForNeutral: false, Disconnects: 0, Reconnects: 0 }
                 && session.Connection.Generation == initialGeneration, "the selected controller connection changed");
+            DeadzoneGateChecks(device, catalog, preset);
         }
         finally
         {
@@ -89,6 +90,74 @@ internal static class HotProfileTests
             directory.Delete();
         }
         Console.WriteLine("Passed same-name live edits, chord activation and release, fresh catalog reload and 85HF packet replay.");
+    }
+
+    private static void DeadzoneGateChecks(HidCollection device, ProfileCatalog catalog, ProfileEditSnapshot preset)
+    {
+        const string name = "Deadzone gate fixture";
+        catalog.SaveDeadzones(preset, name, new(30, 0, 10));
+        catalog.SaveMappings(catalog.OpenEditor(name), name, [new("A", [])]);
+        var enabled = catalog.Resolve(name).Bindings;
+        byte[] drift = (byte[])Rest.Clone();
+        drift[2] = 153;
+        byte[] outside = (byte[])drift.Clone();
+        outside[2] = 230;
+        byte[] saturated = (byte[])drift.Clone();
+        saturated[2] = 244;
+        byte[] held = (byte[])drift.Clone();
+        held[8] = 1;
+        LiveState last = LiveState.Neutral;
+        var session = new PhysicalSession(device, enabled, state => last = state, () => last = LiveState.Neutral);
+        void VerifyReleaseGate(HidCollection current)
+        {
+            session.Report(current, outside);
+            Check(session.Connection.WaitingForNeutral && last == LiveState.Neutral, "a stick outside its deadzone must keep the release gate armed");
+            session.Report(current, held);
+            Check(session.Connection.WaitingForNeutral && last == LiveState.Neutral, "a held unmapped physical button must keep the release gate armed");
+            session.Report(current, drift);
+            Check(!session.Connection.WaitingForNeutral && last == LiveState.Neutral && session.Latest?.Raw[2] == 153,
+                "stick drift within the deadzone releases the gate without changing physical telemetry");
+            session.Report(current, outside);
+            Check(last.Lx is > 128 and < 255, "intentional stick movement passes through between the two thresholds");
+            session.Report(current, saturated);
+            Check(last.Lx == 255, "the loaded outer zone reaches full output after release or reconnect");
+        }
+
+        VerifyReleaseGate(device);
+        session.SetDevice(null);
+        Check(last == LiveState.Neutral, "disconnecting clears the filtered output");
+        var returning = device with { Handle = 101, Path = "deadzone-return" };
+        session.SetDevice(returning);
+        VerifyReleaseGate(returning);
+
+        var running = new PhysicalSession(device, preset.Profile.Bindings, state => last = state, () => last = LiveState.Neutral);
+        running.Report(device, Rest);
+        running.Report(device, drift);
+        Check(last.Lx == 153, "profiles without deadzones preserve the physical movement");
+        long generation = running.Connection.Generation;
+        running.ChangeBindings(enabled);
+        Check(!running.Connection.WaitingForNeutral && last == LiveState.Neutral && running.Connection.Generation == generation,
+            "hot apply releases drift on the current attachment with the new deadzone");
+        running.Report(device, saturated);
+        Check(last.Lx == 255, "hot apply updates the outer cutoff on the current attachment");
+        running.Report(device, drift);
+        running.ChangeBindings(preset.Profile.Bindings);
+        Check(running.Connection.WaitingForNeutral, "hot apply restores the original release tolerance for a zero-deadzone profile");
+
+        byte[] slightMovement = (byte[])Rest.Clone();
+        slightMovement[2] = 132;
+        var narrowRange = PadBindings.CreateMappings(enabled.Layout, enabled.Mappings, new(0, 0, 99));
+        running.Report(device, Rest);
+        running.Report(device, slightMovement);
+        running.ChangeBindings(narrowRange);
+        running.Report(device, slightMovement);
+        Check(running.Connection.WaitingForNeutral && last == LiveState.Neutral,
+            "a narrow outer cutoff must keep the gate armed when a small physical offset would saturate the output");
+        running.Report(device, Rest);
+        Check(!running.Connection.WaitingForNeutral && last == LiveState.Neutral, "center must release the narrow range gate");
+        running.Report(device, slightMovement);
+        Check(last.Lx == 255, "intentional movement after release must still reach the configured outer cutoff");
+        Console.WriteLine("Passed deadzone-aware release on startup, reconnect and compatible profile changes.");
     }
 
     private static void Check(bool condition, string message)

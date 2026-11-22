@@ -208,7 +208,7 @@ internal sealed class CalibratedLayout : DeviceLayout
             ? (byte)(128 + (Scale(v, c.Rest, c.Last) * 127 + 127) / 255)
             : (byte)(128 - (Scale(v, c.Rest, c.First) * 128 + 127) / 255);
 
-    public override bool IsPhysicallyReleased(ReadOnlySpan<byte> report)
+    public override bool IsPhysicallyReleased(ReadOnlySpan<byte> report, StickDeadzones deadzones = default)
     {
         if (!TryDecodePhysical(report, out var s, out var extras)) return false;
         if (Is85HF && !Bluetooth85HfLayout.DigitalsReleased(report)) return false;
@@ -217,7 +217,7 @@ internal sealed class CalibratedLayout : DeviceLayout
             if ((c.Field.Width == 1 || c.Source == "Hat") && c.Field.Read(report) != c.Rest) return false;
         int triggerTolerance = Is85HF ? 2 : 5;
         return extras == 0 && s.Buttons == 0 && s.Hat == 8 && s.Lt <= triggerTolerance && s.Rt <= triggerTolerance &&
-            Math.Abs(s.Lx - 128) <= 9 && Math.Abs(s.Ly - 128) <= 9 &&
-            Math.Abs(s.Rx - 128) <= 9 && Math.Abs(s.Ry - 128) <= 9;
+            StickDeadzones.IsReleased(s.Lx, s.Ly, deadzones.Left, deadzones.LeftOuter) &&
+            StickDeadzones.IsReleased(s.Rx, s.Ry, deadzones.Right, deadzones.RightOuter);
     }
 }

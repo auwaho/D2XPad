@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace D2XPad.Live;
 
@@ -135,13 +136,18 @@ internal sealed class ProfileCatalog
 
     public ControllerProfile Save(ProfileEditSnapshot original, string name, IEnumerable<ExtraAssignment> assignments)
     {
-        return SaveBindings(original, name, PadBindings.Create(original.Profile.Bindings.Layout, assignments));
+        var previous = original.Profile.Bindings;
+        return SaveBindings(original, name, PadBindings.Create(previous.Layout, assignments, previous.Deadzones));
     }
 
-    public ControllerProfile SaveMappings(ProfileEditSnapshot original, string name, IEnumerable<InputMapping> mappings)
-    {
-        return SaveBindings(original, name, PadBindings.CreateMappings(original.Profile.Bindings.Layout, mappings));
-    }
+    public ControllerProfile SaveMappings(ProfileEditSnapshot original, string name, IEnumerable<InputMapping> mappings) =>
+        SaveProfile(original, name, mappings, original.Profile.Bindings.Deadzones);
+
+    public ControllerProfile SaveDeadzones(ProfileEditSnapshot original, string name, StickDeadzones deadzones) =>
+        SaveProfile(original, name, original.Profile.Bindings.Mappings, deadzones);
+
+    public ControllerProfile SaveProfile(ProfileEditSnapshot original, string name, IEnumerable<InputMapping> mappings, StickDeadzones deadzones) =>
+        SaveBindings(original, name, PadBindings.CreateMappings(original.Profile.Bindings.Layout, mappings, deadzones));
 
     private ControllerProfile SaveBindings(ProfileEditSnapshot original, string name, PadBindings bindings)
     {
@@ -201,18 +207,27 @@ internal sealed class ProfileCatalog
         {
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
+                var deadzones = profile.Bindings.Deadzones;
+                bool hasOuterDeadzones = deadzones.LeftOuter != 0 || deadzones.RightOuter != 0;
                 JsonSerializer.Serialize(stream, new
                 {
-                    schemaVersion = 3,
+                    schemaVersion = hasOuterDeadzones ? 5 : deadzones == default ? 3 : 4,
                     name = profile.Name,
                     device = profile.Bindings.Layout.Id,
                     mappings = profile.Bindings.Mappings.Select(m => new
                     {
                         source = m.Source,
                         actions = m.Actions.Select(a => new { target = a.Target, strength = a.Strength })
-                    })
+                    }),
+                    stickDeadzones = deadzones == default ? null : new
+                    {
+                        left = deadzones.Left,
+                        right = deadzones.Right,
+                        leftOuter = hasOuterDeadzones ? (int?)deadzones.LeftOuter : null,
+                        rightOuter = hasOuterDeadzones ? (int?)deadzones.RightOuter : null
+                    }
                 },
-                    new JsonSerializerOptions { WriteIndented = true });
+                    new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
                 stream.Flush(flushToDisk: true);
             }
             if (original == null) File.Move(temporary, destination, overwrite: false);
@@ -279,9 +294,9 @@ internal sealed class ProfileCatalog
         if (root.ValueKind != JsonValueKind.Object) throw new InvalidDataException("A profile must be a JSON object.");
         if (root.TryGetProperty("schemaVersion", out var version))
         {
-            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int v) || v is < 1 or > 3)
-                throw new InvalidDataException("Unsupported D2XPad profile schemaVersion. Expected 1, 2 or 3.");
-            if (root.EnumerateObject().Count() != 4)
+            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int v) || v is < 1 or > 5)
+                throw new InvalidDataException("Unsupported D2XPad profile schemaVersion. Expected a version from 1 to 5.");
+            if (root.EnumerateObject().Count() != (v >= 4 ? 5 : 4))
                 throw new InvalidDataException("Unexpected or missing controller profile fields.");
             string name = ReadText(root, "name");
             string device = ReadText(root, "device");
@@ -293,11 +308,12 @@ internal sealed class ProfileCatalog
                 return new(name, PadBindings.Parse(bindings));
             }
             var layout = DeviceLayout.Resolve(device);
-            if (v == 3)
+            if (v >= 3)
             {
                 if (!root.TryGetProperty("mappings", out var mappings) || mappings.ValueKind != JsonValueKind.Array)
-                    throw new InvalidDataException("Version 3 profiles require a mappings array.");
-                return new(name, PadBindings.CreateMappings(layout, mappings.EnumerateArray().Select(ParseMapping)));
+                    throw new InvalidDataException($"Version {v} profiles require a mappings array.");
+                var deadzones = v >= 4 ? ParseDeadzones(root, v) : default;
+                return new(name, PadBindings.CreateMappings(layout, mappings.EnumerateArray().Select(ParseMapping), deadzones));
             }
             if (!root.TryGetProperty("extraButtons", out var entries) || entries.ValueKind != JsonValueKind.Array)
                 throw new InvalidDataException("Version 2 profiles require an extraButtons array.");
@@ -320,6 +336,23 @@ internal sealed class ProfileCatalog
         }
         return new(fileName, PadBindings.Parse(root));
     }
+
+    private static StickDeadzones ParseDeadzones(JsonElement root, int version)
+    {
+        bool hasOuterDeadzones = version == 5;
+        if (!root.TryGetProperty("stickDeadzones", out var zones) || zones.ValueKind != JsonValueKind.Object ||
+            zones.EnumerateObject().Count() != (hasOuterDeadzones ? 4 : 2))
+            throw new InvalidDataException($"Version {version} profiles require a valid stickDeadzones object.");
+        int left = ReadInteger(zones, "left");
+        int right = ReadInteger(zones, "right");
+        return hasOuterDeadzones
+            ? new(left, right, ReadInteger(zones, "leftOuter"), ReadInteger(zones, "rightOuter"))
+            : new(left, right);
+    }
+
+    private static int ReadInteger(JsonElement root, string key) =>
+        root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int integer)
+            ? integer : throw new InvalidDataException($"Expected an integer for '{key}'.");
 
     private static InputMapping ParseMapping(JsonElement row)
     {

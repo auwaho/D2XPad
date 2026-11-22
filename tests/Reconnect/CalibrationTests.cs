@@ -140,6 +140,16 @@ internal static class CalibrationTests
             session.Report(returning, Packet());
             session.Report(returning, Packet(a: 1, rt: 1));
             Check(output == (LiveState.Neutral with { Buttons = 0x1000, Rt = 255 }), "Control after reconnect");
+            Check(!ReferenceEquals(preview, session.Layout), "Fixture must exercise rebinding to the session's calibrated layout");
+            var filtered = PadBindings.CreateMappings(preview, [], new(25, 0));
+            session.ChangeBindings(filtered);
+            var drift = Packet(y: -420);
+            Check(layout.TryDecodePhysical(drift, out var raw, out _) && raw.Ly > 137 && !layout.IsPhysicallyReleased(drift),
+                "Fixture drift must exceed the original calibrated release tolerance");
+            session.Report(returning, drift);
+            session.Report(returning, drift);
+            Check(!session.Connection.WaitingForNeutral && output == LiveState.Neutral,
+                "Rebinding a profile to a calibrated instance must preserve its deadzone and release tolerance");
             Console.WriteLine("Passed calibrated descriptor, signed packed axis, analog/digital triggers, hat, fixed extras, storage, profile and reconnect checks.");
         }
         finally

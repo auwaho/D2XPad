@@ -43,15 +43,27 @@ A fresh install selects `default` for the Bluetooth 85HF and also includes `sout
 | `default` | LB | RB | A | B |
 | `southpaw-buttons` | RB | LB | B | A |
 
-## Edit mappings
+## Edit a profile
 
-Choose **Edit mappings**, select a standard input or a named extra button and pick an Xbox action before selecting **Add**. Add several actions to send them together. For example, assign **RT** at 100% and **Left stick up** at 75% to one paddle. **Strength** scales analog outputs.
+On **Converter**, select a profile and choose **Edit profile**. The **Profile editor** holds your **Mappings** and **Sticks** changes in one draft. **Save and apply** updates a saved profile and applies both sets of changes together. Enter a new name and choose **Save copy and apply** to create a separate profile from a built-in or saved one. You can edit and save while conversion is stopped. While conversion is running, the updated profile applies to the existing virtual Xbox controller.
 
-![D2XPad Input mappings editor](images/input-mappings.png)
+### Edit mappings
+
+On **Mappings**, select a standard input or a named extra button and pick an Xbox action before selecting **Add**. Add several actions to send them together. For example, assign **RT** at 100% and **Left stick up** at 75% to one paddle. **Strength** scales analog outputs.
+
+![D2XPad Profile editor on the Mappings tab](images/input-mappings.png)
 
 **Clear actions** disables Xbox output for the selected input. **Undo clear** brings back the actions and strengths from immediately before the clear. **Reset changes** restores the open profile's actions for that input. A customized standard input also offers **Use default** to restore its standard Xbox action.
 
-**Save and apply** updates a saved profile. Enter a new name and choose **Save copy and apply** to create a separate profile from a built-in or saved one. **Import profile** adds a mapping file to the catalog. A profile for another saved controller appears when you select that controller. **Delete profile** removes a saved profile after confirmation and keeps a `.bak` that you can import again. The editor and physical input tester also work with conversion stopped.
+### Set stick deadzones
+
+On **Sticks**, use the two handles to set the inner and outer thresholds for each physical stick. The default range is 0%–100%. The handles keep at least 1% of active travel between them. The previews distinguish the inner and outer zones and show the physical position and the result of the current draft as you move the sticks. Save the profile to apply the settings to conversion.
+
+For a shifted center or uneven travel, use **Controllers → Recalibrate** to measure the resting position and endpoints. Recalibration updates the controller layout used by its profiles. Deadzones are saved in individual profiles.
+
+### Manage profile files
+
+**Import profile** adds a profile file to the catalog. A profile for another saved controller appears when you select that controller. **Delete profile** removes a saved profile after confirmation and keeps a `.bak` that you can import again.
 
 ## Add another controller
 

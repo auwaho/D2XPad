@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private string? previewTarget;
     private string? chosenProfile;
     private ProfileEditSnapshot? selection;
+    private ProfileEditor? profileEditor;
     private DeviceLayout layout = DeviceLayout.Bluetooth85HF;
     private DeviceLayout? sessionLayout;
     private PadBindings? selectedBindings;
@@ -389,6 +390,8 @@ public partial class MainWindow : Window
             : !running && device != null && device.LayoutId != layout.Id ? "Choose a profile for this controller." : null;
         if (!busy) SetStatusContext(guidance, warning: reconnect);
         var physical = connected && !suspended ? frame?.Physical ?? (preview != null ? engine.Preview : null) : null;
+        if (profileEditor is { } editor)
+            editor.UpdateStickPreview(deviceLayout?.Id == editor.LayoutId ? physical : null);
         string missing = suspended ? "Physical input is suspended."
             : !running && device == null && devices.Count > 0 ? "Select a physical controller."
             : !connected ? $"Waiting for the {shortName}."
@@ -400,25 +403,25 @@ public partial class MainWindow : Window
         UpdateControllerWorkspace();
     }
 
-    private void EditAssignments(object sender, RoutedEventArgs e)
+    private void EditProfile(object sender, RoutedEventArgs e)
     {
-        if (chosenProfile == null || busy || exiting) return;
+        if (chosenProfile == null || busy || exiting || profileEditor != null) return;
         try
         {
             var original = catalog.OpenEditor(chosenProfile);
             ProfileEditSnapshot? written = null;
-            async Task SaveAndApply(string name, IReadOnlyList<InputMapping> assignments, bool replace)
+            async Task SaveAndApply(string name, IReadOnlyList<InputMapping> mappings, StickDeadzones deadzones)
             {
                 bool sameAsOriginal = string.Equals(name, original.Profile.Name, StringComparison.OrdinalIgnoreCase);
                 bool retry = written != null && string.Equals(name, written.Profile.Name, StringComparison.OrdinalIgnoreCase);
-                if (sameAsOriginal && !replace && !retry)
+                if (sameAsOriginal && !original.CanReplace && !retry)
                     throw new InvalidDataException("Enter a new name to save a copy.");
                 await sessionLock.WaitAsync(lifetime.Token);
                 busy = true;
                 try
                 {
                     ShowError(null);
-                    var profile = catalog.SaveMappings(retry ? written! : original, name, assignments);
+                    var profile = catalog.SaveProfile(retry ? written! : original, name, mappings, deadzones);
                     written = catalog.OpenEditor(profile.Name);
                     try
                     {
@@ -429,7 +432,7 @@ public partial class MainWindow : Window
                     }
                     catch (Exception ex)
                     {
-                        throw new InvalidOperationException($"Saved “{profile.Name}”. Could not confirm the live mapping. {ex.Message} You can retry.", ex);
+                        throw new InvalidOperationException($"Saved “{profile.Name}”. Could not confirm the live profile. {ex.Message} You can retry.", ex);
                     }
                     LoadProfiles(frame?.Profile ?? profile.Name);
                     TrySavePreference(() => preferences.SaveProfile(chosenProfile!, layout.Id));
@@ -443,9 +446,11 @@ public partial class MainWindow : Window
                     if (!exiting) Draw();
                 }
             }
-            new BindingEditor(original.Profile, original.CanReplace, SaveAndApply) { Owner = this }.ShowDialog();
+            profileEditor = new ProfileEditor(original.Profile, original.CanReplace, SaveAndApply) { Owner = this };
+            profileEditor.ShowDialog();
         }
-        catch (Exception ex) { ShowError("Couldn't open input mappings.", ex.ToString()); }
+        catch (Exception ex) { ShowError("Couldn't open the profile editor.", ex.ToString()); }
+        finally { profileEditor = null; }
     }
 
     private async void ProfileChanged(object sender, SelectionChangedEventArgs e)

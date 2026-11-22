@@ -59,7 +59,7 @@ internal static class DeviceLayoutTests
         public override bool MatchesCollection(uint vendorId, uint productId, ushort usagePage, ushort usage) => false;
         public override bool MatchesReports(string transport, int? reportLength, IReadOnlyList<byte>? reportIds) =>
             transport == Transport && reportLength == 3 && reportIds?.Contains((byte)0x13) == true;
-        public override bool IsPhysicallyReleased(ReadOnlySpan<byte> report) => report is [0x13, 0, 0];
+        public override bool IsPhysicallyReleased(ReadOnlySpan<byte> report, StickDeadzones deadzones = default) => report is [0x13, 0, 0];
         public override bool TryDecodePhysical(ReadOnlySpan<byte> report, out LiveState state, out ExtraButtons extras)
         {
             state = LiveState.Neutral;

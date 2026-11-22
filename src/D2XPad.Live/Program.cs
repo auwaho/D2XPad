@@ -187,6 +187,8 @@ internal static class Program
                     throw new InvalidDataException("The guided hardware check requires the Bluetooth 85HF layout.");
                 var selection = SelectProfile(catalog, profileSelector, layout);
                 var map = selection.Profile.Bindings;
+                if (command == "check" && map.Deadzones != default)
+                    throw new InvalidDataException("The guided check requires 0% stick deadzones. Use the desktop input tester to check this profile.");
                 if (capture != null && !map.UsesReplayDefaults)
                     throw new InvalidDataException("The recorded capture expects the built-in 85HF calibration and L4=LB, R4=RB, PL=A and PR=B. " +
                         "Run the live check to test your current calibration and bindings.");
@@ -273,7 +275,8 @@ internal static class Program
         if (File.Exists(legacy))
         {
             var customized = ProfileSelection.Load(catalog, legacy);
-            if (!customized.Profile.Bindings.UsesDefault85HfAssignments) return customized;
+            var bindings = customized.Profile.Bindings;
+            if (!bindings.UsesDefault85HfAssignments || bindings.Deadzones != default) return customized;
         }
         return ProfileSelection.Load(catalog, layout.DefaultProfileName);
     }

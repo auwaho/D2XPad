@@ -16,9 +16,10 @@ internal static class AssignmentDraftChecks
         var profile = new ControllerProfile("Platformer", bindings);
         var sources = bindings.Sources.OrderByDescending(source => source.Id.StartsWith("extra:", StringComparison.Ordinal)).ToArray();
         int attempts = 0;
-        var editor = new BindingEditor(profile, canReplace: true, (name, mappings, replace) =>
+        var editor = new ProfileEditor(profile, canReplace: true, (name, mappings, deadzones) =>
         {
-            Check(name == "Platformer copy" && !replace, "Editing the name must save a copy.");
+            Check(name == "Platformer copy", "Editing the name must save a copy.");
+            Check(deadzones == default, "Editing mappings must leave the saved stick settings intact.");
             Check(mappings.Single(mapping => mapping.Source == "A").Actions.SequenceEqual([new XboxAction("B")]) &&
                 mappings.Single(mapping => mapping.Source == "extra:PL").Actions.SequenceEqual([new("A"), new("RT", 80), new("LeftStickUp"), new("X")]),
                 "Saving changed an unrelated input or lost combined actions.");
@@ -110,18 +111,18 @@ internal static class AssignmentDraftChecks
                     editor.PendingChanges.Visibility == Visibility.Visible, "Undo clear lost previous unsaved actions or strength.");
                 restoredStrength.Value = 80;
                 editor.ProfileName.Text = "Platformer copy";
-                Check(Equals(editor.SaveMappings.Content, "Save copy and apply"), "A renamed draft does not show the save-copy action.");
-                Click(editor.SaveMappings);
-                Check(attempts == 1 && editor.EditorMessage.Text == "The first save was rejected." && editor.SaveMappings.IsEnabled &&
+                Check(Equals(editor.SaveProfile.Content, "Save copy and apply"), "A renamed draft does not show the save-copy action.");
+                Click(editor.SaveProfile);
+                Check(attempts == 1 && editor.EditorMessage.Text == "The first save was rejected." && editor.SaveProfile.IsEnabled &&
                     editor.PendingChanges.Visibility == Visibility.Visible, "A failed save lost the draft or its retry action.");
-                Click(editor.SaveMappings);
+                Click(editor.SaveProfile);
             }
             catch (Exception ex) { failure = ex; editor.Close(); }
         });
         bool? result = editor.ShowDialog();
-        if (failure != null) throw new InvalidOperationException("Assignment editor interaction failed.", failure);
+        if (failure != null) throw new InvalidOperationException("Profile mappings interaction failed.", failure);
         Check(result == true && attempts == 2, "Retry did not complete the save.");
-        Console.WriteLine("WPF assignment editor passed explicit action choice, draft tracking, scoped reset, undo clear, analog strength and save retry.");
+        Console.WriteLine("WPF profile mappings passed explicit action choice, draft tracking, scoped reset, undo clear, analog strength and save retry.");
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject node)

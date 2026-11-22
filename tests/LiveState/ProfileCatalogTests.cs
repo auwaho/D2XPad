@@ -56,6 +56,8 @@ internal static class ProfileCatalogTests
             EditorChecks(catalog, store, file);
             DeletionChecks(catalog, store, file);
             MappingCatalogChecks(catalog, store, file);
+            DeadzoneCatalogChecks(catalog, store, file);
+            OuterDeadzoneCatalogChecks(catalog, store, file);
 
             if (capturePath != null)
             {
@@ -166,6 +168,98 @@ internal static class ProfileCatalogTests
             Reject(() => catalog.Import(external, "Broken chord"));
         }
         Check(!catalog.Names().Contains("Broken chord"), "invalid chords leave no profile");
+    }
+
+    private static void DeadzoneCatalogChecks(ProfileCatalog catalog, string store, string external)
+    {
+        const string name = "Stick deadzone fixture";
+        var original = catalog.OpenEditor("Multi");
+        Check(original.Profile.Bindings.Deadzones == default && catalog.Resolve("default").Bindings.Deadzones == default,
+            "v3 and built-in profiles keep zero deadzones");
+        var deadzones = new StickDeadzones(6, StickDeadzones.Maximum);
+        catalog.SaveDeadzones(original, name, deadzones);
+        string destination = Path.Combine(store, name + ".json");
+        var document = JsonNode.Parse(File.ReadAllText(destination))!.AsObject();
+        var reopened = new ProfileCatalog(store).OpenEditor(name);
+        Check((int)document["schemaVersion"]! == 4 && (int)document["stickDeadzones"]!["left"]! == 6 &&
+            (int)document["stickDeadzones"]!["right"]! == StickDeadzones.Maximum && reopened.Profile.Bindings.Deadzones == deadzones,
+            "nonzero deadzones round-trip independently as schema v4");
+        Check(reopened.Profile.Bindings.GetActions("extra:L4").SequenceEqual(original.Profile.Bindings.GetActions("extra:L4")) &&
+            reopened.Profile.Bindings.GetActions("A").Count == 0 && catalog.Resolve("Multi").Bindings.Deadzones == default,
+            "saving stick settings retains mappings and preserves the original profile");
+        catalog.Import(destination, "Imported stick settings");
+        Check(catalog.Resolve("Imported stick settings").Bindings.Deadzones == deadzones, "import preserves stick settings");
+
+        foreach (var (field, value) in new (string, JsonNode)[] { ("left", -1), ("right", 100), ("left", "8"), ("right", 7.5), ("unknown", 0) })
+        {
+            var broken = document.DeepClone();
+            broken["stickDeadzones"]![field] = value;
+            File.WriteAllText(external, broken.ToJsonString());
+            Reject(() => catalog.Import(external, "Invalid stick settings"));
+        }
+        var incomplete = document.DeepClone();
+        incomplete["stickDeadzones"]!.AsObject().Remove("right");
+        File.WriteAllText(external, incomplete.ToJsonString());
+        Reject(() => catalog.Import(external, "Incomplete stick settings"));
+
+        catalog.SaveMappings(reopened, name, [new("A", [new("Y")])]);
+        Check(catalog.Resolve(name).Bindings.Deadzones == deadzones, "saving mappings keeps the profile's deadzones");
+        catalog.Save(catalog.OpenEditor(name), name, [new("L4", "L4", "Y")]);
+        Check(catalog.Resolve(name).Bindings.Deadzones == deadzones, "saving legacy bindings keeps the profile's deadzones");
+        catalog.SaveDeadzones(catalog.OpenEditor(name), name, default);
+        var reset = JsonNode.Parse(File.ReadAllText(destination))!;
+        Check((int)reset["schemaVersion"]! == 3 && reset["stickDeadzones"] == null &&
+            catalog.Resolve(name).Bindings.GetActions("extra:L4").Single().Target == "Y", "resetting stick deadzones writes compatible v3 and preserves mapping edits");
+        Console.WriteLine("Passed stick deadzone profile versioning, migration, import and mapping preservation.");
+    }
+
+    private static void OuterDeadzoneCatalogChecks(ProfileCatalog catalog, string store, string external)
+    {
+        const string name = "Outer stick deadzone fixture";
+        const string legacy = "Legacy inner deadzone fixture";
+        var original = catalog.OpenEditor("Multi");
+        var inner = new StickDeadzones(64, 8);
+        var ranges = inner with { LeftOuter = 15, RightOuter = 15 };
+        catalog.SaveDeadzones(original, legacy, inner);
+        var previous = catalog.OpenEditor(legacy);
+        Check(previous.Profile.Bindings.Deadzones == inner && previous.Profile.Bindings.Deadzones.LeftOuter == 0 &&
+            previous.Profile.Bindings.Deadzones.RightOuter == 0, "v4 inner-only profiles reopen with both outer thresholds at 100 percent");
+
+        catalog.SaveProfile(previous, name, previous.Profile.Bindings.Mappings, ranges);
+        string destination = Path.Combine(store, name + ".json");
+        var document = JsonNode.Parse(File.ReadAllText(destination))!.AsObject();
+        Check((int)document["schemaVersion"]! == 5 && (int)document["stickDeadzones"]!["left"]! == 64 &&
+            (int)document["stickDeadzones"]!["leftOuter"]! == 15 &&
+            (int)document["stickDeadzones"]!["rightOuter"]! == 15 && catalog.Resolve(name).Bindings.Deadzones == ranges,
+            "outer percentages round-trip with both inner percentages in schema v5");
+        catalog.Import(destination, "Imported outer stick settings");
+        Check(catalog.Resolve("Imported outer stick settings").Bindings.Deadzones == ranges, "import preserves the two stick ranges");
+        Check(catalog.Resolve(legacy).Bindings.Deadzones == inner, "saving a range copy preserves the source inner-only profile");
+
+        foreach (var (field, value) in new (string, JsonNode)[]
+        {
+            ("leftOuter", -1), ("rightOuter", 100), ("leftOuter", 36), ("leftOuter", 37),
+            ("rightOuter", "15"), ("leftOuter", 10.5), ("unknown", 0)
+        })
+        {
+            var broken = document.DeepClone();
+            broken["stickDeadzones"]![field] = value;
+            File.WriteAllText(external, broken.ToJsonString());
+            Reject(() => catalog.Import(external, "Invalid outer stick settings"));
+        }
+        var incomplete = document.DeepClone();
+        incomplete["stickDeadzones"]!.AsObject().Remove("rightOuter");
+        File.WriteAllText(external, incomplete.ToJsonString());
+        Reject(() => catalog.Import(external, "Incomplete outer stick settings"));
+
+        catalog.SaveMappings(catalog.OpenEditor(name), name, [new("A", [new("Y")])]);
+        Check(catalog.Resolve(name).Bindings.Deadzones == ranges, "editing mappings preserves both outer percentages");
+        catalog.SaveDeadzones(catalog.OpenEditor(name), name, inner);
+        var reset = JsonNode.Parse(File.ReadAllText(destination))!;
+        Check((int)reset["schemaVersion"]! == 4 && reset["stickDeadzones"]!["leftOuter"] == null &&
+            catalog.Resolve(name).Bindings.GetActions("A").Single().Target == "Y",
+            "resetting the outer zones writes compatible v4 and preserves the mapping edit");
+        Console.WriteLine("Passed outer deadzone profile round-trip, backward compatibility and invalid range rejection.");
     }
 
     private static void DeletionChecks(ProfileCatalog catalog, string store, string external)

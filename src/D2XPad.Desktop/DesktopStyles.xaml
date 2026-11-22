@@ -29,6 +29,25 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="ShellTab" TargetType="TabItem">
+      <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,4,0"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="Transparent"
+                BorderThickness="1" CornerRadius="6" Padding="12,7">
+          <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource SurfaceBorder}"/></Trigger>
+          <Trigger Property="IsSelected" Value="True">
+            <Setter TargetName="Surface" Property="Background" Value="{StaticResource ActiveTab}"/>
+            <Setter TargetName="Surface" Property="BorderBrush" Value="#4B766B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+          </Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="ScrollPageButton" TargetType="RepeatButton">
       <Setter Property="Focusable" Value="False"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton">

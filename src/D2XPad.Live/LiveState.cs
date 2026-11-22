@@ -38,6 +38,90 @@ internal readonly record struct LiveState(byte Lx, byte Ly, byte Rx, byte Ry,
     }
 }
 
+internal readonly record struct StickDeadzones(int Left, int Right, int LeftOuter = 0, int RightOuter = 0)
+{
+    public const int FullTravel = 100;
+    public const int Maximum = FullTravel - 1;
+    private const int Center = 128;
+
+    public void Validate()
+    {
+        if (Left is < 0 or > Maximum || Right is < 0 or > Maximum)
+            throw new InvalidDataException($"Inner stick deadzones must be 0–{Maximum} percent.");
+        if (LeftOuter is < 0 or >= FullTravel || RightOuter is < 0 or >= FullTravel ||
+            Left + LeftOuter >= FullTravel || Right + RightOuter >= FullTravel)
+            throw new InvalidDataException("Outer stick deadzones must be 0–99 percent and leave at least 1 percent of stick travel.");
+    }
+
+    public LiveState Apply(LiveState state)
+    {
+        if (Left != 0 || LeftOuter != 0)
+        {
+            var (x, y) = FilterBytes(state.Lx, state.Ly, Left, LeftOuter);
+            state = state with { Lx = x, Ly = y };
+        }
+        if (Right != 0 || RightOuter != 0)
+        {
+            var (x, y) = FilterBytes(state.Rx, state.Ry, Right, RightOuter);
+            state = state with { Rx = x, Ry = y };
+        }
+        return state;
+    }
+
+    public static bool IsReleased(byte x, byte y, int inner, int outer)
+    {
+        if (!NearCenter(x, y))
+            return inner != 0 && InsideDeadzone(RadiusSquared(x, y), (double)inner / FullTravel);
+        if (outer == 0) return true;
+
+        // A reduced outer threshold can amplify a small physical offset into a held stick.
+        var (filteredX, filteredY) = FilterBytes(x, y, inner, outer);
+        return NearCenter(filteredX, filteredY);
+    }
+
+    private static bool NearCenter(byte x, byte y) => Math.Abs(x - Center) <= 9 && Math.Abs(y - Center) <= 9;
+
+    internal static (double X, double Y) Filter(double x, double y, int inner, int outer)
+    {
+        double scale = FilterScale(x, y, inner, outer);
+        return (x * scale, y * scale);
+    }
+
+    private static (byte X, byte Y) FilterBytes(byte x, byte y, int inner, int outer)
+    {
+        double scale = FilterScale(NormalizeAxis(x), NormalizeAxis(y), inner, outer);
+        return (ScaleAxis(x, scale), ScaleAxis(y, scale));
+    }
+
+    private static double FilterScale(double x, double y, int inner, int outer)
+    {
+        if (inner == 0 && outer == 0) return 1;
+        double radiusSquared = x * x + y * y;
+        double deadzone = (double)inner / FullTravel;
+        if (InsideDeadzone(radiusSquared, deadzone)) return 0;
+        // Stick gates can extend beyond the unit circle. Keep their shape at the default outer setting.
+        if (outer == 0 && radiusSquared >= 1) return 1;
+
+        double cutoff = (double)(FullTravel - outer) / FullTravel;
+        double radius = Math.Sqrt(radiusSquared);
+        return radius >= cutoff ? 1 / radius : (radius - deadzone) / ((cutoff - deadzone) * radius);
+    }
+
+    private static bool InsideDeadzone(double radiusSquared, double deadzone) => radiusSquared <= deadzone * deadzone;
+
+    private static double RadiusSquared(byte x, byte y)
+    {
+        double horizontal = NormalizeAxis(x);
+        double vertical = NormalizeAxis(y);
+        return horizontal * horizontal + vertical * vertical;
+    }
+
+    private static double NormalizeAxis(byte axis) => (axis - Center) / (axis < Center ? 128.0 : 127.0);
+
+    private static byte ScaleAxis(byte axis, double scale) =>
+        (byte)Math.Round(Center + (axis - Center) * scale, MidpointRounding.AwayFromZero);
+}
+
 internal sealed record XboxAction(string Target, int Strength = 100);
 internal sealed record InputMapping(string Source, IReadOnlyList<XboxAction> Actions);
 internal sealed record InputControl(string Id, string Name, bool IsAnalog);
@@ -83,11 +167,12 @@ internal sealed class PadBindings
     public DeviceLayout Layout { get; }
     public IReadOnlyList<InputControl> Sources { get; }
     public IReadOnlyList<InputMapping> Mappings { get; }
+    public StickDeadzones Deadzones { get; }
 
     // For the legacy guided CLI check and reports. Advanced profiles use the interactive tester.
     public IReadOnlyList<ExtraAssignment> ExtraAssignments { get; }
     internal bool UsesDefault85HfAssignments { get; }
-    public bool UsesReplayDefaults => Layout == DeviceLayout.Bluetooth85HF && UsesDefault85HfAssignments;
+    public bool UsesReplayDefaults => Layout == DeviceLayout.Bluetooth85HF && UsesDefault85HfAssignments && Deadzones == default;
     public JsonElement Assignments => legacyAssignments.ValueKind == JsonValueKind.Object ? legacyAssignments :
         throw new InvalidDataException("Use the desktop input tester for profiles with standard remaps, analog actions or combinations.");
 
@@ -96,11 +181,14 @@ internal sealed class PadBindings
         Controls.TryGetValue(sourceId, out var control) ? Array.AsReadOnly(new[] { new XboxAction(control.ToString()) }) : [];
     public IReadOnlyList<XboxAction> GetActions(string sourceId) => effective[sourceId];
 
-    public static PadBindings CreateMappings(DeviceLayout layout, IEnumerable<InputMapping> mappings) => new(layout, mappings);
+    public static PadBindings CreateMappings(DeviceLayout layout, IEnumerable<InputMapping> mappings,
+        StickDeadzones deadzones = default) => new(layout, mappings, deadzones);
 
-    private PadBindings(DeviceLayout layout, IEnumerable<InputMapping> overrides)
+    private PadBindings(DeviceLayout layout, IEnumerable<InputMapping> overrides, StickDeadzones deadzones)
     {
+        deadzones.Validate();
         Layout = layout;
+        Deadzones = deadzones;
         var extras = layout.ExtraSources.ToDictionary(e => ExtraId(e.Id), StringComparer.OrdinalIgnoreCase);
         Sources = Array.AsReadOnly(ActionTargets.Where(t => layout.HasStandardInput(t.Id))
             .Concat(layout.ExtraSources.Select(e => new InputControl(ExtraId(e.Id), e.Name, false))).ToArray());
@@ -160,7 +248,7 @@ internal sealed class PadBindings
     }
 
     // Upgrade old profile aliases by their stable physical source IDs. Physical names now belong to the layout.
-    public static PadBindings Create(DeviceLayout layout, IEnumerable<ExtraAssignment> assignments)
+    public static PadBindings Create(DeviceLayout layout, IEnumerable<ExtraAssignment> assignments, StickDeadzones deadzones = default)
     {
         var available = layout.ExtraSources.ToDictionary(s => s.Id, StringComparer.OrdinalIgnoreCase);
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -177,7 +265,7 @@ internal sealed class PadBindings
             mappings.Add(new(ExtraId(source.Id), string.Equals(row.Target, "None", StringComparison.OrdinalIgnoreCase)
                 ? [] : [new(row.Target)]));
         }
-        return CreateMappings(layout, mappings);
+        return CreateMappings(layout, mappings, deadzones);
     }
 
     public static PadBindings Load(string path)
@@ -203,6 +291,7 @@ internal sealed class PadBindings
     public bool TryDecode(ReadOnlySpan<byte> report, out LiveState state, out ExtraButtons extras)
     {
         if (!Layout.TryDecodePhysical(report, out state, out extras)) return false;
+        if (Deadzones != default) state = Deadzones.Apply(state);
         if (Mappings.Count == 0) return true;
         int physicalBits = state.Buttons | HatButtons(state.Hat);
         Span<double> output = stackalloc double[(int)Control.RightStickDown + 1];

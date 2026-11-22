@@ -114,15 +114,17 @@ internal sealed class PhysicalSession
         {
             if (replacement.Layout.Id != Layout.Id)
                 throw new InvalidDataException($"Choose a profile for {Layout.DisplayName}.");
-            waitingForNeutral = latest == null || !Layout.IsPhysicallyReleased(latest.Raw);
+            var updated = BindToSelectedLayout(replacement);
+            bool needsRelease = latest == null || !Layout.IsPhysicallyReleased(latest.Raw, updated.Deadzones);
             Submit(LiveState.Neutral);
             // The last physical report still belongs to this attachment and is independent of its mapping.
-            bindings = BindToSelectedLayout(replacement);
+            waitingForNeutral = needsRelease;
+            bindings = updated;
         }
     }
 
     private PadBindings BindToSelectedLayout(PadBindings profile) => profile.Layout == Layout ? profile :
-        PadBindings.CreateMappings(Layout, profile.Mappings);
+        PadBindings.CreateMappings(Layout, profile.Mappings, profile.Deadzones);
 
     public void PowerChanged(bool sleeping)
     {
@@ -175,7 +177,7 @@ internal sealed class PhysicalSession
             }
             if (waitingForNeutral)
             {
-                waitingForNeutral = !Layout.IsPhysicallyReleased(report);
+                waitingForNeutral = !Layout.IsPhysicallyReleased(report, bindings.Deadzones);
                 decoded = LiveState.Neutral;
             }
             Submit(decoded);

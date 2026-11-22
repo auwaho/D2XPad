@@ -8,7 +8,7 @@ using D2XPad.Live;
 
 namespace D2XPad.Desktop;
 
-public partial class BindingEditor : Window
+public partial class ProfileEditor : Window
 {
     private sealed class ActionRow(InputControl target, int strength, Action changed) : INotifyPropertyChanged
     {
@@ -66,25 +66,34 @@ public partial class BindingEditor : Window
     private readonly string profileCaption;
     private readonly string initialProfileName;
     private readonly bool canReplace;
-    private readonly Func<string, IReadOnlyList<InputMapping>, bool, Task> saveAndApply;
+    private readonly bool hasLeftStick, hasRightStick;
+    private readonly Func<string, IReadOnlyList<InputMapping>, StickDeadzones, Task> saveAndApply;
     private readonly PhysicalInput[] inputs = [];
     private PhysicalInput? Selected => InputList.SelectedItem as PhysicalInput;
+    private PadReading? stickInput;
     private bool saving;
 
-    internal BindingEditor(ControllerProfile profile, bool canReplace,
-        Func<string, IReadOnlyList<InputMapping>, bool, Task> saveAndApply)
+    internal ProfileEditor(ControllerProfile profile, bool canReplace,
+        Func<string, IReadOnlyList<InputMapping>, StickDeadzones, Task> saveAndApply)
     {
         original = profile;
         this.canReplace = canReplace;
         this.saveAndApply = saveAndApply;
         var bindings = profile.Bindings;
         var layout = bindings.Layout;
+        hasLeftStick = layout.HasStandardInput("LeftStickLeft") || layout.HasStandardInput("LeftStickUp");
+        hasRightStick = layout.HasStandardInput("RightStickLeft") || layout.HasStandardInput("RightStickUp");
         bool learnedDefault = layout.Id != DeviceLayout.Bluetooth85HF.Id && profile.Name == layout.DefaultProfileName;
         profileCaption = learnedDefault ? $"{layout.DisplayName} · default" : profile.Name;
         initialProfileName = canReplace ? profile.Name : SuggestCopyName(learnedDefault ? layout.DisplayName : profile.Name);
         InitializeComponent();
         WindowCaption.UseDark(this);
         KeyboardFocusCues.Track(this);
+        LeftDeadzone.SetRange(bindings.Deadzones.Left, StickDeadzones.FullTravel - bindings.Deadzones.LeftOuter);
+        RightDeadzone.SetRange(bindings.Deadzones.Right, StickDeadzones.FullTravel - bindings.Deadzones.RightOuter);
+        LeftDeadzone.IsEnabled = hasLeftStick;
+        RightDeadzone.IsEnabled = hasRightStick;
+        RefreshStickPreviews();
         var extras = bindings.Layout.ExtraSources.Select(s => PadBindings.ExtraId(s.Id)).ToHashSet();
         inputs = bindings.Sources.Select(source => new PhysicalInput(source, extras.Contains(source.Id), bindings.GetActions(source.Id)))
             .OrderByDescending(input => input.IsExtra).ToArray();
@@ -94,17 +103,18 @@ public partial class BindingEditor : Window
         ProfileName.Text = initialProfileName;
         InputList.ItemsSource = inputs;
         InputList.SelectedIndex = inputs.Length == 0 ? -1 : 0;
-        DeviceName.Text = learnedDefault ? profileCaption : $"{layout.DisplayName}  ·  {profile.Name}";
+        ProfileTabs.Tag = learnedDefault ? profileCaption : $"{layout.DisplayName}  ·  {profile.Name}";
         UpdateProfileHint();
         RefreshActions();
     }
 
     private static string SuggestCopyName(string label)
     {
+        const string suffix = " custom";
         var delimiters = Path.GetInvalidFileNameChars().Append('.').ToArray();
         string stem = string.Join(" ", label.Split(delimiters, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
         if (stem.Length == 0) stem = "Controller";
-        return stem[..Math.Min(stem.Length, 243)].TrimEnd() + " custom";
+        return stem[..Math.Min(stem.Length, 250 - suffix.Length)].TrimEnd() + suffix;
     }
 
     private ActionRow NewAction(PhysicalInput input, XboxAction action) =>
@@ -213,24 +223,53 @@ public partial class BindingEditor : Window
 
     private bool UpdatingOriginal => canReplace && string.Equals(ProfileName.Text, original.Name, StringComparison.OrdinalIgnoreCase);
 
+    internal string LayoutId => original.Bindings.Layout.Id;
+
+    internal void UpdateStickPreview(PadReading? reading)
+    {
+        if (stickInput == reading) return;
+        stickInput = reading;
+        RefreshStickPreviews();
+    }
+
+    private StickDeadzones DeadzoneDraft => new(LeftDeadzone.Inner, RightDeadzone.Inner,
+        StickDeadzones.FullTravel - LeftDeadzone.Outer, StickDeadzones.FullTravel - RightDeadzone.Outer);
+
+    private void DeadzoneChanged(object? sender, EventArgs e)
+    {
+        if (LeftStickPreview == null || RightStickPreview == null) return;
+        RefreshStickPreviews();
+        UpdatePendingChanges();
+    }
+
+    private void RefreshStickPreviews()
+    {
+        LeftDeadzoneValue.Text = $"{LeftDeadzone.Inner}%–{LeftDeadzone.Outer}%";
+        RightDeadzoneValue.Text = $"{RightDeadzone.Inner}%–{RightDeadzone.Outer}%";
+        var left = hasLeftStick ? stickInput : null;
+        var right = hasRightStick ? stickInput : null;
+        LeftStickPreview.SetState(LeftDeadzone.Inner, LeftDeadzone.Outer, left?.Lx, left?.Ly);
+        RightStickPreview.SetState(RightDeadzone.Inner, RightDeadzone.Outer, right?.Rx, right?.Ry);
+    }
+
     private void ProfileNameChanged(object sender, TextChangedEventArgs e)
     {
-        if (SaveMappings != null) UpdateProfileHint();
+        if (SaveProfile != null) UpdateProfileHint();
         UpdatePendingChanges();
     }
 
     private void UpdatePendingChanges()
     {
-        if (PendingChanges == null || ProfileName == null) return;
+        if (PendingChanges == null || ProfileName == null || LeftDeadzone == null || RightDeadzone == null) return;
         var comparison = canReplace ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         bool modified = !string.Equals(ProfileName.Text, initialProfileName, comparison) ||
-            inputs.Any(input => input.IsModified);
+            DeadzoneDraft != original.Bindings.Deadzones || inputs.Any(input => input.IsModified);
         PendingChanges.Visibility = modified ? Visibility.Visible : Visibility.Hidden;
     }
 
     private void UpdateProfileHint()
     {
-        SaveMappings.Content = UpdatingOriginal ? "Save and apply" : "Save copy and apply";
+        SaveProfile.Content = UpdatingOriginal ? "Save and apply" : "Save copy and apply";
         Message(UpdatingOriginal ? "Change the profile name to save a separate copy." : $"Save a new profile based on {profileCaption}.");
     }
 
@@ -246,18 +285,18 @@ public partial class BindingEditor : Window
         string name = ProfileName.Text;
         if (string.IsNullOrWhiteSpace(name) || (!canReplace && string.Equals(name, original.Name, StringComparison.OrdinalIgnoreCase)))
         {
-            Message("Enter a new profile name to save these mappings.", error: true);
+            Message("Enter a new profile name to save a copy.", error: true);
             ProfileName.Focus();
             return;
         }
         saving = true;
-        Fields.IsEnabled = ProfileName.IsEnabled = SaveMappings.IsEnabled = CancelEditor.IsEnabled = false;
+        ProfileTabs.IsEnabled = ProfileName.IsEnabled = SaveProfile.IsEnabled = CancelEditor.IsEnabled = false;
         Message("Saving profile…");
         try
         {
             var mappings = inputs.Where(input => !input.IsDefault)
                 .Select(input => new InputMapping(input.Id, input.Export())).ToArray();
-            await saveAndApply(name, mappings, UpdatingOriginal);
+            await saveAndApply(name, mappings, DeadzoneDraft);
             saving = false;
             DialogResult = true;
         }
@@ -265,7 +304,7 @@ public partial class BindingEditor : Window
         finally
         {
             saving = false;
-            Fields.IsEnabled = ProfileName.IsEnabled = SaveMappings.IsEnabled = CancelEditor.IsEnabled = true;
+            ProfileTabs.IsEnabled = ProfileName.IsEnabled = SaveProfile.IsEnabled = CancelEditor.IsEnabled = true;
             UpdateAddAction();
         }
     }

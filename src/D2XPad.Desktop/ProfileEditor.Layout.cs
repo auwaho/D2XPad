@@ -5,7 +5,7 @@ using Forms = System.Windows.Forms;
 
 namespace D2XPad.Desktop;
 
-public partial class BindingEditor
+public partial class ProfileEditor
 {
     private Size? preferredMinimum;
 

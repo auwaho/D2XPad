@@ -6,7 +6,8 @@ D2XPad reads one selected physical controller and presents one virtual Xbox Seri
 flowchart LR
     Device["Physical HID controller"] --> Raw["Windows Raw Input"]
     Raw --> Layout["Controller layout"]
-    Layout --> Mapping["Mapping profile"]
+    Layout --> Deadzones["Profile stick deadzones"]
+    Deadzones --> Mapping["Mapping profile"]
     Mapping --> Virtual["HIDMaestro Xbox Series X/S"]
     Virtual --> Game["XInput application"]
 ```
@@ -16,6 +17,8 @@ flowchart LR
 - A **controller layout** decodes a particular HID report format into physical button, axis and trigger states. The built-in Bluetooth 85HF layout reads two independent analog trigger fields and four independent extras.
 - The calibration wizard learns layouts from a physical USB or Bluetooth gamepad or joystick with one input report ID. Its signature includes VID/PID, transport, usage, report framing and a fingerprint of the HID fields. This matches a saved layout to its report format. The running session also tracks the selected physical instance by interface path and PnP container ID.
 - A **profile** belongs to one layout and stores mappings from physical inputs to Xbox actions. One input can contribute to several outputs. Analog actions scale with physical travel and configured strength. Multiple contributions to the same output use the strongest value, and opposing stick directions subtract.
+- The desktop profile editor maintains one draft across **Mappings** and **Sticks**. Saving writes both sets of changes to the same profile revision before applying it to the running session.
+- Each physical stick can have profile-specific radial inner and outer deadzones. The filter centers input inside the inner radius and rescales the active range. A reduced outer threshold reaches full radial output early. The default outer threshold preserves the original gate shape. Filtering takes place before remapping and supplies the profile editor's live preview. Inner settings use schema version 4, and profiles with a reduced outer threshold use version 5.
 - The WPF desktop can show the decoded physical input before mapping and independently read the resulting virtual controller through XInput.
 
 ## Virtual output and session lifecycle
@@ -28,7 +31,7 @@ The service owns one virtual output at a time. Closing the connection or stoppin
 
 When **Start conversion automatically** is enabled, the desktop waits for the saved physical controller in the signed-in user's session, including when the window is hidden. It matches the device's layout and physical identity, then starts the converter with the saved profile and explicitly requests service output. Initial waiting uses no virtual device or XInput slot. The same session handles input and reconnection once conversion is running. Stop and Exit cancel the desktop's wait as well as ending active conversion.
 
-A compatible profile switch resets Xbox output to neutral on the existing slot. Disconnect and Windows suspend also neutralize output. Once the same physical device is available and its inputs return to rest, the session can resume on the existing virtual controller. Stopping conversion releases that controller.
+A compatible profile switch resets Xbox output to neutral on the existing slot. Disconnect and Windows suspend also neutralize output. Once the same physical device is available and its inputs return to rest, the session can resume on the existing virtual controller. The release gate checks filtered stick displacement when the outer threshold can amplify small physical offsets. Stopping conversion releases that controller.
 
 ## Vibration
 

@@ -2,13 +2,28 @@
 function Open-AssignmentEditor($window) {
     (Find-Control $window 'EditButton').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     $filter = [System.Windows.Automation.AndCondition]::new(
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'BindingEditor'),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ProfileEditor'),
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $window.Current.ProcessId))
     Wait-For {
         $editor = $window.FindFirst($descendants, $filter)
         if ($editor) { return $editor }
         [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $filter)
-    } 'The assignment editor did not open.'
+    } 'The profile editor did not open.'
+}
+
+function Select-EditorTab($editor, [string]$id) {
+    $tab = Find-Control $editor $id
+    $selection = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+    $selection.Select()
+    Wait-For { $selection.Current.IsSelected } "The $id tab did not open." | Out-Null
+}
+
+function Get-DeadzoneHandle($editor, [string]$stick, [string]$handle) {
+    $element = Wait-For {
+        $range = Find-Control $editor $stick
+        if ($range) { Find-Control $range $handle }
+    } "Missing $handle in $stick."
+    $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
 }
 
 function Invoke-EditorButton($editor, [string]$id) {
@@ -53,6 +68,16 @@ function Test-AssignmentEditor($window, $original, [switch]$Offline) {
         foreach ($pass in 1,2) {
             $editor = Open-AssignmentEditor $window
             (Find-Control $editor 'ProfileName').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($name)
+            if ($pass -eq 2) {
+                Select-EditorTab $editor 'SticksTab'
+                if ((Get-DeadzoneHandle $editor 'LeftDeadzone' 'InnerHandle').Current.Value -ne 7 -or
+                    (Get-DeadzoneHandle $editor 'LeftDeadzone' 'OuterHandle').Current.Value -ne 90 -or
+                    (Get-DeadzoneHandle $editor 'RightDeadzone' 'InnerHandle').Current.Value -ne 13 -or
+                    (Get-DeadzoneHandle $editor 'RightDeadzone' 'OuterHandle').Current.Value -ne 85) {
+                    throw 'The stick ranges did not survive reopening.'
+                }
+                Select-EditorTab $editor 'MappingsTab'
+            }
             Select-EditorInput $editor 'A' 'A'
             if ($pass -eq 1) {
                 Invoke-EditorButton $editor 'ClearSource'
@@ -87,7 +112,14 @@ function Test-AssignmentEditor($window, $original, [switch]$Offline) {
                 Add-EditorAction $editor 'X'
                 $summary = 'X'
             }
-            Invoke-EditorButton $editor 'SaveMappings'
+            if ($pass -eq 1) {
+                Select-EditorTab $editor 'SticksTab'
+                (Get-DeadzoneHandle $editor 'LeftDeadzone' 'InnerHandle').SetValue(7)
+                (Get-DeadzoneHandle $editor 'LeftDeadzone' 'OuterHandle').SetValue(90)
+                (Get-DeadzoneHandle $editor 'RightDeadzone' 'InnerHandle').SetValue(13)
+                (Get-DeadzoneHandle $editor 'RightDeadzone' 'OuterHandle').SetValue(85)
+            }
+            Invoke-EditorButton $editor 'SaveProfile'
             if (!$Offline) {
                 $confirmed = Wait-For {
                     $state = Read-Session
@@ -101,7 +133,10 @@ function Test-AssignmentEditor($window, $original, [switch]$Offline) {
             $saved = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
             $paddle = $saved.mappings | Where-Object source -ceq 'extra:PL'
             $standard = $saved.mappings | Where-Object source -ceq 'A'
-            if ($saved.schemaVersion -ne 3 -or !$paddle) { throw 'Missing version 3 mapping.' }
+            if ($saved.schemaVersion -ne 5 -or !$paddle -or $saved.stickDeadzones.left -ne 7 -or
+                $saved.stickDeadzones.right -ne 13 -or $saved.stickDeadzones.leftOuter -ne 10 -or $saved.stickDeadzones.rightOuter -ne 15) {
+                throw 'The profile did not save the mappings and stick ranges together.'
+            }
             if ($pass -eq 1) {
                 if (($paddle.actions.target -join ',') -cne 'RT,LeftStickUp' -or $paddle.actions[1].strength -ne 75 -or !$standard -or $standard.actions.Count -ne 0) {
                     throw 'The saved combination or disabled standard source is incorrect.'
